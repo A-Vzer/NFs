@@ -1,29 +1,34 @@
 import torch
-import torch.nn.functional as F
 import torch.utils.data as data
-from train_helper import check_manual_seed, load_dataset
+from utils import standardize
+from train_helper import check_manual_seed
 import os
-from adapter import Adapter
+import torch.nn.functional as F
+from pathlib import Path
+from adapter import Adapter, Dataset
+from torchvision import transforms, datasets
 from itertools import islice
 from ignite.contrib.handlers import ProgressBar
 from ignite.engine import Engine, Events
 from ignite.handlers import ModelCheckpoint, Timer
 from ignite.metrics import RunningAverage, Loss
+import torch.optim as optim
+dir_path = os.path.dirname(os.path.realpath(__file__))
 
 
-def execute(modelName, dataset, dataroot, download, dataAugment, bs, eval_bs, eps, modelSave, seed, n_workers,
+def execute(modelName, dataset, dataroot, download, dataAugment, bs, eval_bs, eps, lr, modelSave, seed, n_workers,
             cuda, output_dir, optimSave):
     device = "cpu" if (not torch.cuda.is_available() or not cuda) else "cuda:0"
+    print(device)
     check_manual_seed(seed)
-    ds = load_dataset(dataset, dataroot, dataAugment, download)
-    imShape, num_classes, train_dataset, test_dataset = ds
-
-    train_loader = data.DataLoader(train_dataset, batch_size=bs, shuffle=True,
-                                   num_workers=n_workers, drop_last=True)
-    test_loader = data.DataLoader(test_dataset, batch_size=eval_bs, shuffle=False,
-                                  num_workers=n_workers, drop_last=False)
-
-    p = Adapter(modelName, imShape)
+    ds = Dataset(dataset, dataroot, dataAugment, download)
+    train_loader = data.DataLoader(ds.train_dataset, batch_size=bs, shuffle=True, num_workers=n_workers,
+        drop_last=True, )
+    test_loader = data.DataLoader(ds.test_dataset, batch_size=eval_bs, shuffle=False, num_workers=n_workers,
+        drop_last=False, )
+    p = Adapter(modelName, ds.imDim)
+    p.optimizer = optim.Adamax(p.model.parameters(), lr=lr, weight_decay=5e-5)
+    # Interesting way of dealing with learning rate...
     model = p.model.to(device)
 
     def step(engine, batch):
@@ -60,7 +65,7 @@ def execute(modelName, dataset, dataroot, download, dataAugment, bs, eval_bs, ep
 
     trainer = Engine(step)
     checkpoint_handler = ModelCheckpoint(output_dir, "glow", n_saved=2, require_empty=False)
-    trainer.add_event_handler(Events.EPOCH_COMPLETED, checkpoint_handler, {"model": model, "optimizer": optimizer})
+    trainer.add_event_handler(Events.EPOCH_COMPLETED, checkpoint_handler, {"model": model, "optimizer": p.optimizer})
     monitoring_metrics = ["total_loss"]
     RunningAverage(output_transform=lambda x: x["total_loss"]).attach(trainer, "total_loss")
 
@@ -126,4 +131,21 @@ def execute(modelName, dataset, dataroot, download, dataAugment, bs, eval_bs, ep
 
 
 if __name__ == "__main__":
-    execute()
+    modelName = 'glow'
+    dataset = 'cifar10'
+    dataroot = dir_path
+    download = True
+    dataAugment = True
+    bs = 64
+    eval_bs = 512
+    eps = 200
+    lr = 5e-4
+    seed = 42069
+    n_workers = 0
+    cuda = True
+    output_dir = "output/"
+    modelSave = None
+    optimSave = None
+    print(f"Model: {modelName}, Dataset: {dataset}, bs: {bs}, eps: {eps}, lr: {lr}")
+    execute(modelName, dataset, dataroot, download, dataAugment, bs, eval_bs, eps, lr, modelSave, seed, n_workers,
+            cuda, output_dir, optimSave)

@@ -1,17 +1,16 @@
 import math
 import torch
 import torch.nn as nn
-from layers import queezeLayer, ActNorm2d, InvertibleConv1x1, Permute2d, Conv2d, Split2d, gaussian_sample, \
-    gaussian_likelihood, gaussian_p
-from tools import splitter, compute_same_pad, uniform_binning_correction
+from Glow import layers, tools
+
 
 def get_block(in_channels, out_channels, hidden_channels):
     block = nn.Sequential(
-        Conv2d(in_channels, hidden_channels),
+        layers.Conv2d(in_channels, hidden_channels),
         nn.ReLU(inplace=False),
-        Conv2d(hidden_channels, hidden_channels, kernel_size=(1, 1)),
+        layers.Conv2d(hidden_channels, hidden_channels, kernel_size=(1, 1)),
         nn.ReLU(inplace=False),
-        Conv2dZeros(hidden_channels, out_channels),
+        layers.Conv2dZeros(hidden_channels, out_channels),
     )
     return block
 
@@ -21,17 +20,17 @@ class FlowUnit(nn.Module):
         super().__init__()
         self.coupling = coupling
         # Actnorm
-        self.actnorm = ActNorm2d(inUnits, actNormScale)
+        self.actnorm = layers.ActNorm2d(inUnits, actNormScale)
 
         # Permuatation
         if perm == "invconv":
-            self.invconv = InvertibleConv1x1(inUnits, LU=LU)
+            self.invconv = layers.InvertibleConv1x1(inUnits, LU=LU)
             self.perm = lambda z, logdet, rev: self.invconv(z, logdet, rev)
         elif perm == "shuffle":
-            self.shuffle = Permute2d(inUnits, shuffle=True)
+            self.shuffle = layers.Permute2d(inUnits, shuffle=True)
             self.perm = lambda z, logdet, rev: (self.shuffle(z, rev), logdet,)
         else:
-            self.reverse = Permute2d(inUnits, shuffle=False)
+            self.reverse = layers.Permute2d(inUnits, shuffle=False)
             self.perm = lambda z, logdet, rev: (self.reverse(z, rev), logdet,)
             # Coupling
         if coupling == "additive":
@@ -54,12 +53,12 @@ class FlowUnit(nn.Module):
         z, logdet = self.perm(z, logdet, False)
 
         # Coupling
-        za, zb = splitter(z, 'split')
+        za, zb = tools.splitter(z, 'split')
         if self.coupling == 'additive':
             zb = zb + self.block(za)
         elif self.coupling == 'affine':
             h = self.block(za)
-            shift, scale = splitter(h, "cross")
+            shift, scale = tools.splitter(h, "cross")
             scale = torch.sigmoid(scale + 2.0)
             zb = zb + shift
             zb = zb * scale
@@ -72,12 +71,12 @@ class FlowUnit(nn.Module):
         assert input.size(1) % 2 == 0
 
         # 1.coupling
-        z1, z2 = splitter(inputt, "split")
+        z1, z2 = tools.splitter(inputt, "split")
         if self.flow_coupling == "additive":
             z2 = z2 - self.block(z1)
         elif self.flow_coupling == "affine":
             h = self.block(z1)
-            shift, scale = splitter(h, "cross")
+            shift, scale = tools.splitter(h, "cross")
             scale = torch.sigmoid(scale + 2.0)
             z2 = z2 / scale
             z2 = z2 - shift
@@ -107,32 +106,32 @@ class MultiScaleFlow(nn.Module):
         for i in range(L):
             # Squeeze
             C, H, W = C * 4, H // 2, W // 2  # new dimensions
-            self.layers.append(SqueezeLayer(factor=2))
-            self.output_shapes.append([-1, C, H, W])
+            self.layers.append(layers.SqueezeLayer(factor=2))
+            self.outputDim.append([-1, C, H, W])
 
             # Flow
             for _ in range(K):
                 self.layers.append(FlowUnit(inUnits=C, hiddenUnits=hiddenUnits, actNormScale=actNormScale,
                                             perm=perm, coupling=coupling, LU=LU))
 
-            self.output_shapes.append([-1, C, H, W])
+            self.outputDim.append([-1, C, H, W])
 
             # Split
             if i < L - 1:
-                self.layers.append(Split2d(num_channels=C))
-                self.output_shapes.append([-1, C // 2, H, W])
+                self.layers.append(layers.Split2d(num_channels=C))
+                self.outputDim.append([-1, C // 2, H, W])
                 C = C // 2
 
     def forward(self, z, logdet=0.0, reverse=False):
         if reverse:
             for layer in reversed(self.layers):
-                if isinstance(layer, Split2d):
+                if isinstance(layer, layers.Split2d):
                     z, logdet = layer(z, logdet=0, reverse=True)
                 else:
                     z, logdet = layer(z, logdet=0, reverse=True)
             return z
         else:
-            for layer, shape in zip(self.layers, self.output_shapes):
+            for layer, shape in zip(self.layers, self.outputDim):
                 z, logdet = layer(z, logdet, reverse=False)
             return z, logdet
 
@@ -150,9 +149,9 @@ class Glow(nn.Module):
         super().__init__()
         self.flow = MultiScaleFlow(imageDim, hiddenUnits, K, L, actNormScale, perm, coupling, LU)
 
-        self.register_buffer("prior_h", torch.zeros([1, self.flow.output_shapes[-1][1] * 2,
-                                                     self.flow.output_shapes[-1][2],
-                                                     self.flow.output_shapes[-1][3]]), )
+        self.register_buffer("prior_h", torch.zeros([1, self.flow.outputDim[-1][1] * 2,
+                                                     self.flow.outputDim[-1][2],
+                                                     self.flow.outputDim[-1][3]]), )
 
     def prior(self, data):
         if data is not None:
@@ -161,7 +160,7 @@ class Glow(nn.Module):
             # Hardcoded a batch size of 32 here
             h = self.prior_h.repeat(32, 1, 1, 1)
 
-        return splitter(h, "split")
+        return tools.splitter(h, "split")
 
     def forward(self, x=None, z=None, reverse=False):
         if reverse:
@@ -172,12 +171,11 @@ class Glow(nn.Module):
     def normal_flow(self, x):
         b, c, h, w = x.shape
 
-        x, logdet = uniform_binning_correction(x)
-
+        x, logdet = tools.uniform_binning_correction(x)
         z, objective = self.flow(x, logdet=logdet, reverse=False)
-
         mean, logs = self.prior(x)
-        objective += gaussian_likelihood(mean, logs, z)
+        print(z.shape, mean.shape, logs.shape)
+        objective += layers.gaussian_likelihood(mean, logs, z)
 
         # Full objective - converted to bits per dimension
         bpd = (-objective) / (math.log(2.0) * c * h * w)
@@ -188,11 +186,11 @@ class Glow(nn.Module):
         with torch.no_grad():
             if z is None:
                 mean, logs = self.prior(z)
-                z = gaussian_sample(mean, logs)
+                z = layers.gaussian_sample(mean, logs)
             x = self.flow(z, reverse=True)
         return x
 
     def set_actnorm_init(self):
         for name, m in self.named_modules():
-            if isinstance(m, ActNorm2d):
+            if isinstance(m, layers.ActNorm2d):
                 m.inited = True

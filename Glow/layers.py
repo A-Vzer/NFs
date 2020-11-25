@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
-from tools import splitter
+from Glow import tools
 import math
 
 
@@ -12,6 +12,7 @@ def gaussian_p(mean, logs, x):
             Var = logs ** 2
     """
     c = math.log(2 * math.pi)
+
     return -0.5 * (logs * 2.0 + ((x - mean) ** 2) / torch.exp(logs * 2.0) + c)
 
 
@@ -25,6 +26,7 @@ def gaussian_sample(mean, logs):
     z = torch.normal(mean, torch.exp(logs))
 
     return z
+
 
 def squeeze(input, factor):
     if factor == 1:
@@ -72,7 +74,7 @@ class SqueezeLayer(nn.Module):
         return output, logdet
 
 
-class ActNormLayer(nn.module):
+class ActNormLayer(nn.Module):
     """Initialize bias and scale with first minibatch to ensure zero mean and unit variance
     then make them trainable paramters"""
 
@@ -85,63 +87,63 @@ class ActNormLayer(nn.module):
         self.scale = scale
         self.inited = False
 
-        def initParameters(self, input):
-            if not self.training:
-                raise ValueError("In Eval mode, but ActNorm not inited")
+    def initParameters(self, input):
+        if not self.training:
+            raise ValueError("In Eval mode, but ActNorm not inited")
 
-            with torch.no_grad():
-                bias = -torch.mean(input.clone(), dim=[0, 2, 3], keepdim=True)
-                vars = torch.mean((input.clone() + bias) ** 2, dim=[0, 2, 3], keepdim=True)
-                logs = torch.log(self.scale / (torch.sqrt(vars) + 1e-6))
+        with torch.no_grad():
+            bias = -torch.mean(input.clone(), dim=[0, 2, 3], keepdim=True)
+            vars = torch.mean((input.clone() + bias) ** 2, dim=[0, 2, 3], keepdim=True)
+            logs = torch.log(self.scale / (torch.sqrt(vars) + 1e-6))
 
-                self.bias.data.copy_(bias.data)
-                self.logs.data.copy_(logs.data)
+            self.bias.data.copy_(bias.data)
+            self.logs.data.copy_(logs.data)
 
-                self.inited = True
+            self.inited = True
 
-        def center(self, input, reverse=False):
-            if reverse:
-                return input - self.bias
-            else:
-                return input + self.bias
+    def center(self, x, reverse=False):
+        if reverse:
+            return x - self.bias
+        else:
+            return x + self.bias
 
-        def scale(self, input, logdet=None, reverse=False):
+    def _scale(self, x, logdet=None, reverse=False):
 
-            if reverse:
-                input = input * torch.exp(-self.logs)
-            else:
-                input = input * torch.exp(self.logs)
+        if reverse:
+            x = x * torch.exp(-self.logs)
+        else:
+            x = x * torch.exp(self.logs)
 
-            if logdet is not None:
-                """
-                logs is log_std of `mean of channels`
-                so we need to multiply by number of pixels
-                """
-                b, c, h, w = input.shape
+        if logdet is not None:
+            """
+            logs is log_std of `mean of channels`
+            so we need to multiply by number of pixels
+            """
+            b, c, h, w = x.shape
 
-                dlogdet = torch.sum(self.logs) * h * w
-
-                if reverse:
-                    dlogdet *= -1
-
-                logdet = logdet + dlogdet
-
-            return input, logdet
-
-        def forward(self, input, logdet=None, reverse=False):
-            self._check_input_dim(input)
-
-            if not self.inited:
-                self.initialize_parameters(input)
+            dlogdet = torch.sum(self.logs) * h * w
 
             if reverse:
-                input, logdet = self._scale(input, logdet, reverse)
-                input = self.center(input, reverse)
-            else:
-                input = self.center(input, reverse)
-                input, logdet = self._scale(input, logdet, reverse)
+                dlogdet *= -1
 
-            return input, logdet
+            logdet = logdet + dlogdet
+
+        return x, logdet
+
+    def forward(self, x, logdet=None, reverse=False):
+        self._check_input_dim(x)
+
+        if not self.inited:
+            self.initParameters(x)
+
+        if reverse:
+            x, logdet = self._scale(x, logdet, reverse)
+            x = self.center(x, reverse)
+        else:
+            x = self.center(x, reverse)
+            x, logdet = self._scale(x, logdet, reverse)
+
+        return x, logdet
 
 
 class ActNorm2d(ActNormLayer):
@@ -189,7 +191,7 @@ class InvertibleConv1x1(nn.Module):
     def get_weight(self, input, reverse):
         b, c, h, w = input.shape
 
-        if not self.LU_decomposed:
+        if not self.LU:
             dlogdet = torch.slogdet(self.weight)[1] * h * w
             if reverse:
                 weight = torch.inverse(self.weight)
@@ -279,7 +281,7 @@ class Conv2d(nn.Module):
         super().__init__()
 
         if padding == "same":
-            padding = compute_same_pad(kernel_size, stride)
+            padding = tools.compute_same_pad(kernel_size, stride)
         elif padding == "valid":
             padding = 0
 
@@ -316,17 +318,47 @@ class Split2d(nn.Module):
 
     def split2d_prior(self, z):
         h = self.conv(z)
-        return splitter(h, "cross")
+        return tools.splitter(h, "cross")
 
-    def forward(self, input, logdet=0.0, reverse=False, temperature=None):
+    def forward(self, input, logdet=0.0, reverse=False):
         if reverse:
             z1 = input
             mean, logs = self.split2d_prior(z1)
-            z2 = gaussian_sample(mean, logs, temperature)
+            z2 = gaussian_sample(mean, logs)
             z = torch.cat((z1, z2), dim=1)
             return z, logdet
         else:
-            z1, z2 = splitter(input, "split")
+            z1, z2 = tools.splitter(input, "split")
             mean, logs = self.split2d_prior(z1)
             logdet = gaussian_likelihood(mean, logs, z2) + logdet
             return z1, logdet
+
+
+class Conv2dZeros(nn.Module):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        kernel_size=(3, 3),
+        stride=(1, 1),
+        padding="same",
+        logscale_factor=3,
+    ):
+        super().__init__()
+
+        if padding == "same":
+            padding = tools.compute_same_pad(kernel_size, stride)
+        elif padding == "valid":
+            padding = 0
+
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
+
+        self.conv.weight.data.zero_()
+        self.conv.bias.data.zero_()
+
+        self.logscale_factor = logscale_factor
+        self.logs = nn.Parameter(torch.zeros(out_channels, 1, 1))
+
+    def forward(self, input):
+        output = self.conv(input)
+        return output * torch.exp(self.logs * self.logscale_factor)
