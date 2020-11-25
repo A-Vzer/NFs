@@ -3,6 +3,7 @@ import torch
 import torch.optim as optim
 from train_helper import check_manual_seed, load_dataset, loss_glow
 
+
 class Adapter:
     def __init__(self, modelName, imShape):
         if modelName == 'glow':
@@ -26,3 +27,4 @@ class Adapter:
             # Interesting way of dealing with learning rate...
             self.lr_lambda = lambda epoch: min(1.0, (epoch + 1) / self.warmup)  # noqa
             self.scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=self.lr_lambda)
+

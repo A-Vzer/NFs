@@ -1,7 +1,7 @@
 import math
 import torch
 import torch.nn as nn
-from layers import SqueezeLayer, ActNorm2d, InvertibleConv1x1, Permute2d, Conv2d, Split2d, gaussian_sample, \
+from layers import queezeLayer, ActNorm2d, InvertibleConv1x1, Permute2d, Conv2d, Split2d, gaussian_sample, \
     gaussian_likelihood, gaussian_p
 from tools import splitter, compute_same_pad, uniform_binning_correction
 
@@ -27,7 +27,19 @@ class FlowUnit(nn.Module):
         if perm == "invconv":
             self.invconv = InvertibleConv1x1(inUnits, LU=LU)
             self.perm = lambda z, logdet, rev: self.invconv(z, logdet, rev)
-        elif perm == "shuffle":                                                                                                     self.shuffle = Permute2d(inUnits, shuffle=True)                                                                         self.perm = lambda z, logdet, rev: (self.shuffle(z, rev), logdet,)                                                  else:                                                                                                                       self.reverse = Permute2d(inUnits, shuffle=False)                                                                        self.perm = lambda z, logdet, rev: (self.reverse(z, rev), logdet,)                                                                                                                                                                          # Coupling                                                                                                              if coupling == "additive":                                                                                                  self.block = get_block(inUnits // 2, inUnits // 2, hiddenUnits)                                                     elif coupling == "affine":                                                                                                  self.block = get_block(inUnits // 2, inUnits, hiddenUnits)                                                                                                                                                                              def forward(self, inputt, logdet=None, reverse=False):
+        elif perm == "shuffle":
+            self.shuffle = Permute2d(inUnits, shuffle=True)
+            self.perm = lambda z, logdet, rev: (self.shuffle(z, rev), logdet,)
+        else:
+            self.reverse = Permute2d(inUnits, shuffle=False)
+            self.perm = lambda z, logdet, rev: (self.reverse(z, rev), logdet,)
+            # Coupling
+        if coupling == "additive":
+            self.block = get_block(inUnits // 2, inUnits // 2, hiddenUnits)
+        elif coupling == "affine":
+            self.block = get_block(inUnits // 2, inUnits, hiddenUnits)
+
+    def forward(self, inputt, logdet=None, reverse=False):
         if not reverse:
             return self.flow(inputt, logdet)
         else:
