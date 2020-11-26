@@ -5,10 +5,6 @@ from utils import postprocess
 from datasets import Dataset
 from adapter import Adapter
 from itertools import islice
-from ignite.contrib.handlers import ProgressBar
-from ignite.engine import Engine, Events
-from ignite.handlers import ModelCheckpoint, Timer
-from ignite.metrics import RunningAverage, Loss
 import os
 from barbar import Bar
 import matplotlib.pyplot as plt
