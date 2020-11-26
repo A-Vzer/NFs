@@ -17,7 +17,7 @@ class Parameters:
         # zero means clipping off
         self.max_grad_clip = 0
         self.max_grad_norm = 0
-        self.lr = 5e-4
+        self.lr = 1e-3
         self.n_init_batch = 8
         self.y_classes = 10
         self.y_learn_top = False
