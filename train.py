@@ -12,7 +12,6 @@ import os
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
 
-
 def execute(modelName, dataset, dataroot, download, dataAugment, bs, eval_bs, eps, lr, modelSave, seed, n_workers,
             cuda, output_dir, optimSave):
     device = "cpu" if (not torch.cuda.is_available() or not cuda) else "cuda:0"
@@ -56,8 +55,6 @@ def execute(modelName, dataset, dataroot, download, dataAugment, bs, eval_bs, ep
     RunningAverage(output_transform=lambda x: x["total_loss"]).attach(trainer, "total_loss")
 
     evaluator = Engine(eval_step)
-    Loss(lambda x, y: torch.mean(x), output_transform=lambda x: (x["total_loss"], torch.empty(
-            x["total_loss"].shape[0]))).attach(evaluator, "total_loss")
     pbar = ProgressBar()
     pbar.attach(trainer, metric_names=monitoring_metrics)
 
@@ -123,9 +120,9 @@ if __name__ == "__main__":
     dataroot = dir_path
     download = True
     dataAugment = True
-    bs = 8
+    bs = 32
     eval_bs = 512
-    eps = 200
+    eps = 5
     lr = 5e-4
     seed = 42069
     n_workers = 0

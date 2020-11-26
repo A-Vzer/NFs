@@ -1,5 +1,6 @@
 import math
 import torch
+import torch.nn.functional as F
 
 def compute_same_pad(kernel_size, stride):
     if isinstance(kernel_size, int):
@@ -79,6 +80,7 @@ def compute_loss_y(nll, y_logits, y_weight, y, multi_class, reduction="mean"):
 
 def loss(self, x, y):
     if self.y_condition:
+        x = x.to(self.device)
         y = y.to(self.device)
         z, nll, y_logits = self.model(x, y)
         losses = compute_loss_y(nll, self.y_logits, self.y_weight, y, False)
