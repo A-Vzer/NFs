@@ -1,6 +1,7 @@
 import torch
 import torch.utils.data as data
 from train_helper import check_manual_seed
+from utils import postprocess
 from datasets import Dataset
 from adapter import Adapter
 from itertools import islice
@@ -10,70 +11,80 @@ from ignite.handlers import ModelCheckpoint, Timer
 from ignite.metrics import RunningAverage, Loss
 import os
 from barbar import Bar
+import matplotlib.pyplot as plt
+from torchvision.utils import make_grid
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
 
-def execute(modelName, dataset, dataroot, download, dataAugment, bs, eval_bs, eps, modelSave, seed, n_workers,
-            cuda, output_dir, optimSave):
-    device = "cpu" if (not torch.cuda.is_available() or not cuda) else "cuda:0"
-    print(device)
+def execute(modelName, ds, bs, eval_bs, eps, seed, n_workers, device, output_dir):
     check_manual_seed(seed)
-    ds = Dataset(dataset, dataroot, dataAugment, download)
     train_loader = data.DataLoader(ds.data.train_dataset, batch_size=bs, shuffle=True, num_workers=n_workers,
         drop_last=True)
     test_loader = data.DataLoader(ds.data.test_dataset, batch_size=eval_bs, shuffle=False, num_workers=n_workers,
         drop_last=False)
-    flow = Adapter(modelName, ds.data.imDim, device)
+    adapter = Adapter(modelName, ds.data.imDim, device)
 
     loss = []
     avgEval = []
-    if flow.initialize:
+    if adapter.flow.initialize:
         print('Initializing...')
-        flow.model.train()
+        adapter.flow.model.train()
 
         init_batches = []
         init_targets = []
 
         with torch.no_grad():
-            for batch, target in islice(train_loader, None, flow.n_init):
+            for batch, target in islice(train_loader, None, adapter.flow.n_init_batch):
                 init_batches.append(batch)
                 init_targets.append(target)
 
             init_batches = torch.cat(init_batches).to(device)
-            assert init_batches.shape[0] == flow.n_init * bs
+            assert init_batches.shape[0] == adapter.flow.n_init_batch * bs
 
-            flow.model(init_batches)
+            adapter.flow.model(init_batches)
 
     for i in range(eps):
         print(f"Epoch: {i}")
         for idx, (x, y) in enumerate(Bar(train_loader)):
             x = x.to(device)
             y = y.to(device)
-            flow.model.train()
-            flow.optimizer.zero_grad()
-            losses = flow.compute_loss(x, y)
+            adapter.flow.model.train()
+            adapter.flow.optimizer.zero_grad()
+            losses = adapter.flow.compute_loss(x, y)
             losses["total_loss"].backward()
-            flow.clip_gradients()
-            flow.optimizer.step()
+            adapter.flow.clip_gradients()  # if set
+            adapter.flow.optimizer.step()
             loss.append(losses["total_loss"].item())
         print("\n Evaluating...")
         eval_loss = []
         for idx, (x, y) in enumerate(Bar(test_loader)):
-            flow.model.eval()
+            adapter.flow.model.eval()
             x = x.to(device)
             y = y.to(device)
             with torch.no_grad():
-                eval_loss_ = flow.compute_loss(x, y)
+                eval_loss_ = adapter.flow.compute_loss(x, y)
                 eval_loss.append(eval_loss_["total_loss"].item())
         avgEval.append(sum(eval_loss)/len(eval_loss))
         print(f'Avg eval loss: {avgEval[-1]}')
 
-        torch.save({'epoch': i, 'model_state_dict': flow.model.state_dict(),
-                    'optimizer_state_dict': flow.optimizer.state_dict(), 'trainLoss': loss[-1],
+        torch.save({'epoch': i, 'model_state_dict': adapter.flow.model.state_dict(),
+                    'optimizer_state_dict': adapter.flow.optimizer.state_dict(), 'trainLoss': loss[-1],
                     'evalLoss': avgEval[-1]}, output_dir + f"model.pt")
 
 
+def sampler(modelName, modelDir, ds, n):
+    adapter = Adapter(modelName, ds.data.imDim, device)
+    adapter.flow.model.set_actnorm_init()
+    adapter.flow.model.load_state_dict(torch.load(modelDir)['model_state_dict'])
+    images = adapter.flow.sampler(n)
+    images = postprocess(images).cpu()
+    return images
+
+
 if __name__ == "__main__":
+    cuda = True
+    device = "cpu" if (not torch.cuda.is_available() or not cuda) else "cuda:0"
+    print(device)
     modelName = 'glow'
     dataset = 'cifar10'
     dataroot = dir_path
@@ -84,10 +95,25 @@ if __name__ == "__main__":
     eps = 20
     seed = 42069
     n_workers = 0
-    cuda = True
     output_dir = "saves/"
-    modelSave = None
+    modelSave = "saves/model.pt"
     optimSave = None
-    print(f"Model: {modelName}, Dataset: {dataset}, bs: {bs}, eps: {eps}")
-    execute(modelName, dataset, dataroot, download, dataAugment, bs, eval_bs, eps, modelSave, seed, n_workers,
-            cuda, output_dir, optimSave)
+    train = False
+    sample = True
+    ds = Dataset(dataset, dataroot, dataAugment, download)
+    if train:
+        print(f"Model: {modelName}, Dataset: {dataset}, bs: {bs}, eps: {eps}")
+        execute(modelName, ds, bs, eval_bs, eps, seed, n_workers, device, output_dir)
+    if sample:
+        ims = sampler(modelName, modelSave, ds, bs)
+        # print(ims[0])
+        grid = make_grid(ims[:30], nrow=6).permute(1, 2, 0)
+        plt.figure(figsize=(10, 10))
+        plt.imshow(grid)
+        plt.axis('off')
+        plt.show()
+
+
+
+
+
