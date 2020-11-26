@@ -2,6 +2,7 @@ import math
 import torch
 import torch.nn.functional as F
 
+
 def compute_same_pad(kernel_size, stride):
     if isinstance(kernel_size, int):
         kernel_size = [kernel_size]
