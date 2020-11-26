@@ -98,7 +98,7 @@ if __name__ == "__main__":
     output_dir = "saves/"
     modelSave = "saves/model.pt"
     optimSave = None
-    train = False
+    train = True
     sample = True
     ds = Dataset(dataset, dataroot, dataAugment, download)
     if train:
