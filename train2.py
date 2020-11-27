@@ -51,7 +51,6 @@ def execute(modelName, ds, bs, eval_bs, eps, seed, n_workers, device, output_dir
             adapter.flow.clip_gradients()  # if set
             adapter.flow.optimizer.step()
             loss.append(losses["total_loss"].item())
-            break
         print("\n Evaluating...")
         eval_loss = []
         for idx, (x, y) in enumerate(Bar(test_loader)):
@@ -61,7 +60,6 @@ def execute(modelName, ds, bs, eval_bs, eps, seed, n_workers, device, output_dir
             with torch.no_grad():
                 eval_loss_ = adapter.flow.compute_loss(x, y)
                 eval_loss.append(eval_loss_["total_loss"].item())
-            break
         avgEval.append(sum(eval_loss)/len(eval_loss))
 
         print(f'Avg eval loss: {avgEval[-1]}')
@@ -73,7 +71,7 @@ def execute(modelName, ds, bs, eval_bs, eps, seed, n_workers, device, output_dir
 
         torch.save({'epoch': i, 'model_state_dict': adapter.flow.model.state_dict(),
                     'optimizer_state_dict': adapter.flow.optimizer.state_dict(), 'trainLoss': loss[-1],
-                    'evalLoss': avgEval[-1]}, dir_path + output_dir + directory)
+                    'evalLoss': avgEval[-1]}, dir_path + '\\' + output_dir + directory)
 
 
 def sampler(modelName, modelDir, ds, n):
