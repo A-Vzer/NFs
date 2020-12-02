@@ -65,22 +65,15 @@ def execute(modelName, ds, bs, eval_bs, eps, seed, n_workers, device, output_dir
         print(f'Avg eval loss: {avgEval[-1]}')
 
         if i == eps-1:
-            directory = f"model-bs{bs}-ep{eps}-lr{str(adapter.flow.lr)[2:]}_Final.pt"
+            directory = f"model-bs{bs}-ep{eps}-lr{str(adapter.flow.lr)[2:]}-class{classNo}_Final.pt"
         else:
-            directory = f"model-bs{bs}-ep{eps}-lr{str(adapter.flow.lr)[2:]}.pt"
+            directory = f"model-bs{bs}-ep{eps}-lr{str(adapter.flow.lr)[2:]}-class{classNo}.pt"
 
         torch.save({'epoch': i, 'model_state_dict': adapter.flow.model.state_dict(),
                     'optimizer_state_dict': adapter.flow.optimizer.state_dict(), 'trainLoss': loss[-1],
                     'evalLoss': avgEval[-1]}, dir_path + '\\' + output_dir + directory)
 
-
-def sampler(modelName, modelDir, ds, n):
-    adapter = Adapter(modelName, ds.data.imDim, device)
-    adapter.flow.model.set_actnorm_init()
-    adapter.flow.model.load_state_dict(torch.load(modelDir)['model_state_dict'])
-    images = adapter.flow.sampler(n)
-    images = postprocess(images).cpu()
-    return images
+    return dir_path + '\\' + output_dir + directory
 
 
 if __name__ == "__main__":
@@ -89,6 +82,7 @@ if __name__ == "__main__":
     print(device)
     modelName = 'glow'
     dataset = 'cifar10'
+    classNo = 2
     dataroot = dir_path
     download = True
     dataAugment = True
@@ -98,23 +92,23 @@ if __name__ == "__main__":
     seed = 42069
     n_workers = 0
     output_dir = "saves\\"
-    modelSave = "saves\\model.pt"
+    modelSave = "saves\\model-bs32-ep40-lr001_Final.pt"
     optimSave = None
-    train = True
-    sample = True
-    ds = Dataset(dataset, dataroot, dataAugment, download)
+    train = False
+    sample = False
+    likelihood = True
+    ds = Dataset(dataset, dataroot, dataAugment, download, classNo)
     if train:
-        print(f"Model: {modelName}, Dataset: {dataset}, bs: {bs}, eps: {eps}")
-        execute(modelName, ds, bs, eval_bs, eps, seed, n_workers, device, output_dir)
+        print(f"Model: {modelName}, Dataset: {dataset}, bs: {bs}, eps: {eps}, classNo: {classNo}")
+        modelSave = execute(modelName, ds, bs, eval_bs, eps, seed, n_workers, device, output_dir)
     if sample:
-        ims = sampler(modelName, modelSave, ds, bs)
+        ims, adapter = sampler(modelName, modelSave, ds, bs)
         # print(ims[0])
         grid = make_grid(ims[:30], nrow=6).permute(1, 2, 0)
         plt.figure(figsize=(10, 10))
         plt.imshow(grid)
         plt.axis('off')
         plt.show()
-
 
 
 
