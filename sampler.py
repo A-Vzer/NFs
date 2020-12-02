@@ -21,7 +21,7 @@ def sampler(modelName, modelDir, ds, n, temp, post=True):
     return images, adapter
 
 
-def likelihoodEst(adapter, temp=None, n=None, ims=None, ds=None, sampled=True):
+def likelihoodEst(adapter, temp=None, n=None, ds=None, sampled=True):
     if not sampled:
         nlls = []
         data_loader = torch.utils.data.DataLoader(ds.data.train_dataset, batch_size=n, num_workers=0)

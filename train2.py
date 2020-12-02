@@ -94,9 +94,9 @@ if __name__ == "__main__":
     output_dir = "saves\\"
     modelSave = "saves\\model-bs32-ep40-lr001_Final.pt"
     optimSave = None
-    train = False
+    train = True
     sample = False
-    likelihood = True
+    likelihood = False
     ds = Dataset(dataset, dataroot, dataAugment, download, classNo)
     if train:
         print(f"Model: {modelName}, Dataset: {dataset}, bs: {bs}, eps: {eps}, classNo: {classNo}")
