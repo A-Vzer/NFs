@@ -1,14 +1,11 @@
 import torch
 import torch.utils.data as data
 from train_helper import check_manual_seed
-from utils import postprocess
 from datasets import Dataset
 from adapter import Adapter
 from itertools import islice
 import os
 from barbar import Bar
-import matplotlib.pyplot as plt
-from torchvision.utils import make_grid
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
 
@@ -61,17 +58,16 @@ def execute(modelName, ds, bs, eval_bs, eps, seed, n_workers, device, output_dir
                 eval_loss_ = adapter.flow.compute_loss(x, y)
                 eval_loss.append(eval_loss_["total_loss"].item())
         avgEval.append(sum(eval_loss)/len(eval_loss))
-
         print(f'Avg eval loss: {avgEval[-1]}')
 
         if i == eps-1:
-            directory = f"model-bs{bs}-ep{eps}-lr{str(adapter.flow.lr)[2:]}-class{classNo}_Final.pt"
+            directory = f"{modelName}-{ds.nameDataset}-bs{bs}-ep{eps}-lr{str(adapter.flow.lr)[2:]}-class{classNo}_Final.pt"
         else:
-            directory = f"model-bs{bs}-ep{eps}-lr{str(adapter.flow.lr)[2:]}-class{classNo}.pt"
+            directory = f"{modelName}-{ds.nameDataset}-bs{bs}-ep{eps}-lr{str(adapter.flow.lr)[2:]}-class{classNo}.pt"
 
         torch.save({'epoch': i, 'model_state_dict': adapter.flow.model.state_dict(),
-                    'optimizer_state_dict': adapter.flow.optimizer.state_dict(), 'trainLoss': loss[-1],
-                    'evalLoss': avgEval[-1]}, dir_path + '\\' + output_dir + directory)
+                    'optimizer_state_dict': adapter.flow.optimizer.state_dict(), 'trainLoss': loss,
+                    'evalLoss': avgEval}, dir_path + '\\' + output_dir + directory)
 
     return dir_path + '\\' + output_dir + directory
 
@@ -81,12 +77,12 @@ if __name__ == "__main__":
     device = "cpu" if (not torch.cuda.is_available() or not cuda) else "cuda:0"
     print(device)
     modelName = 'glow'
-    dataset = 'cifar10'
-    classNo = 2
+    dataset = 'mnist'
+    classNo = 8
     dataroot = dir_path
     download = True
     dataAugment = True
-    bs = 32
+    bs = 64
     eval_bs = 512
     eps = 40
     seed = 42069
@@ -101,14 +97,6 @@ if __name__ == "__main__":
     if train:
         print(f"Model: {modelName}, Dataset: {dataset}, bs: {bs}, eps: {eps}, classNo: {classNo}")
         modelSave = execute(modelName, ds, bs, eval_bs, eps, seed, n_workers, device, output_dir)
-    if sample:
-        ims, adapter = sampler(modelName, modelSave, ds, bs)
-        # print(ims[0])
-        grid = make_grid(ims[:30], nrow=6).permute(1, 2, 0)
-        plt.figure(figsize=(10, 10))
-        plt.imshow(grid)
-        plt.axis('off')
-        plt.show()
 
 
 

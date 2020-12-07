@@ -8,7 +8,7 @@ class Parameters:
     def __init__(self, imShape, device):
         self.hiddenUnits = 512
         self.K = 32
-        self.L = 3
+        self.L = 3  # change dizz
         self.actNormScale = 1.0
         self.perm = "invconv"
         self.coupling = "affine"
