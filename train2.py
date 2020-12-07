@@ -58,7 +58,6 @@ def execute(modelName, ds, bs, eval_bs, eps, seed, n_workers, device, output_dir
                 eval_loss_ = adapter.flow.compute_loss(x, y)
                 eval_loss.append(eval_loss_["total_loss"].item())
         avgEval.append(sum(eval_loss)/len(eval_loss))
-
         print(f'Avg eval loss: {avgEval[-1]}')
 
         if i == eps-1:
@@ -67,8 +66,8 @@ def execute(modelName, ds, bs, eval_bs, eps, seed, n_workers, device, output_dir
             directory = f"{modelName}-{ds.nameDataset}-bs{bs}-ep{eps}-lr{str(adapter.flow.lr)[2:]}-class{classNo}.pt"
 
         torch.save({'epoch': i, 'model_state_dict': adapter.flow.model.state_dict(),
-                    'optimizer_state_dict': adapter.flow.optimizer.state_dict(), 'trainLoss': loss[-1],
-                    'evalLoss': avgEval[-1]}, dir_path + '\\' + output_dir + directory)
+                    'optimizer_state_dict': adapter.flow.optimizer.state_dict(), 'trainLoss': loss,
+                    'evalLoss': avgEval}, dir_path + '\\' + output_dir + directory)
 
     return dir_path + '\\' + output_dir + directory
 
@@ -78,12 +77,12 @@ if __name__ == "__main__":
     device = "cpu" if (not torch.cuda.is_available() or not cuda) else "cuda:0"
     print(device)
     modelName = 'glow'
-    dataset = 'svhn'
+    dataset = 'mnist'
     classNo = 8
     dataroot = dir_path
     download = True
     dataAugment = True
-    bs = 32
+    bs = 64
     eval_bs = 512
     eps = 40
     seed = 42069
