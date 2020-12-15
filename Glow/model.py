@@ -3,22 +3,21 @@ import torch
 import torch.nn as nn
 from Glow import layers as l
 from Glow import tools as t
-
-
-def get_block(in_channels, out_channels, hidden_channels):
-    block = nn.Sequential(l.Conv2d(in_channels, hidden_channels), nn.ReLU(inplace=False),
-                          l.Conv2d(hidden_channels, hidden_channels, kernel_size=(1, 1)), nn.ReLU(inplace=False),
-                          l.Conv2dZeros(hidden_channels, out_channels))
-    return block
+from ResNet import resnet
+import torch.nn.functional as F
+from Coupling.basicCoupling import Additive, Affine, SoftCheckerboard
+from Coupling.cycleMask import CycleMask
 
 
 class FlowStep(nn.Module):
-    def __init__(self, in_channels, hidden_channels, actnorm_scale, flow_permutation, flow_coupling, LU_decomposed, ):
+    def __init__(self, in_channels, hidden_channels, actnorm_scale, flow_permutation, flow_coupling, LU_decomposed, device):
         super().__init__()
         self.flow_coupling = flow_coupling
-
+        self.device = device
         self.actnorm = l.ActNorm2d(in_channels, actnorm_scale)
-
+        self.rescale = nn.utils.weight_norm(Rescale(in_channels))
+        self.eps = 1e-6
+        
         # 2. permute
         if flow_permutation == "invconv":
             self.invconv = l.InvertibleConv1x1(in_channels, LU_decomposed=LU_decomposed)
@@ -32,9 +31,13 @@ class FlowStep(nn.Module):
 
         # 3. coupling
         if flow_coupling == "additive":
-            self.block = get_block(in_channels // 2, in_channels // 2, hidden_channels)
+            self.coupling = Additive(in_channels // 2, in_channels // 2, hidden_channels)
         elif flow_coupling == "affine":
-            self.block = get_block(in_channels // 2, in_channels, hidden_channels)
+            self.coupling = Additive(in_channels // 2, in_channels, hidden_channels)
+        elif flow_coupling == "checker":
+            self.coupling = SoftCheckerboard(in_channels, in_channels * 2, hidden_channels, self.device)
+        elif flow_coupling == "cycle":
+            self.coupling = CycleMask(in_channels, in_channels * 2, hidden_channels, self.device)
 
     def forward(self, input, logdet=None, reverse=False):
         if not reverse:
@@ -52,17 +55,7 @@ class FlowStep(nn.Module):
         z, logdet = self.flow_permutation(z, logdet, False)
 
         # 3. coupling
-        z1, z2 = t.split_feature(z, "split")
-        if self.flow_coupling == "additive":
-            z2 = z2 + self.block(z1)
-        elif self.flow_coupling == "affine":
-            h = self.block(z1)
-            shift, scale = t.split_feature(h, "cross")
-            scale = torch.sigmoid(scale + 2.0)
-            z2 = z2 + shift
-            z2 = z2 * scale
-            logdet = torch.sum(torch.log(scale), dim=[1, 2, 3]) + logdet
-        z = torch.cat((z1, z2), dim=1)
+        z, logdet = self.coupling(z, logdet, False)
 
         return z, logdet
 
@@ -70,17 +63,7 @@ class FlowStep(nn.Module):
         assert input.size(1) % 2 == 0
 
         # 1.coupling
-        z1, z2 = t.split_feature(input, "split")
-        if self.flow_coupling == "additive":
-            z2 = z2 - self.block(z1)
-        elif self.flow_coupling == "affine":
-            h = self.block(z1)
-            shift, scale = t.split_feature(h, "cross")
-            scale = torch.sigmoid(scale + 2.0)
-            z2 = z2 / scale
-            z2 = z2 - shift
-            logdet = -torch.sum(torch.log(scale), dim=[1, 2, 3]) + logdet
-        z = torch.cat((z1, z2), dim=1)
+        z, logdet = self.coupling(input, logdet, True)
 
         # 2. permute
         z, logdet = self.flow_permutation(z, logdet, True)
@@ -93,7 +76,7 @@ class FlowStep(nn.Module):
 
 class FlowNet(nn.Module):
     def __init__(self, image_shape, hidden_channels, K, L, actnorm_scale, flow_permutation, flow_coupling,
-            LU_decomposed, ):
+            LU_decomposed, device):
         super().__init__()
 
         self.layers = nn.ModuleList()
@@ -113,7 +96,7 @@ class FlowNet(nn.Module):
             # 2. K FlowStep
             for _ in range(K):
                 self.layers.append(FlowStep(in_channels=C, hidden_channels=hidden_channels, actnorm_scale=actnorm_scale,
-                    flow_permutation=flow_permutation, flow_coupling=flow_coupling, LU_decomposed=LU_decomposed, ))
+                    flow_permutation=flow_permutation, flow_coupling=flow_coupling, LU_decomposed=LU_decomposed, device=device))
                 self.output_shapes.append([-1, C, H, W])
 
             # 3. Split2d
@@ -144,11 +127,11 @@ class FlowNet(nn.Module):
 
 class Glow(nn.Module):
     def __init__(self, image_shape, hidden_channels, K, L, actnorm_scale, flow_permutation, flow_coupling,
-            LU_decomposed, y_classes, learn_top, y_condition):
+            LU_decomposed, y_classes, learn_top, y_condition, device):
         super().__init__()
         self.flow = FlowNet(image_shape=image_shape, hidden_channels=hidden_channels, K=K, L=L,
             actnorm_scale=actnorm_scale, flow_permutation=flow_permutation, flow_coupling=flow_coupling,
-            LU_decomposed=LU_decomposed, )
+            LU_decomposed=LU_decomposed, device=device)
         self.y_classes = y_classes
         self.y_condition = y_condition
 
@@ -184,7 +167,6 @@ class Glow(nn.Module):
             assert y_onehot is not None
             yp = self.project_ycond(y_onehot)
             h += yp.view(h.shape[0], channels, 1, 1)
-
         return t.split_feature(h, "split")
 
     def forward(self, x=None, y_onehot=None, z=None, temperature=None, reverse=False):
@@ -199,10 +181,8 @@ class Glow(nn.Module):
         x, logdet = t.uniform_binning_correction(x)
 
         z, objective = self.flow(x, logdet=logdet, reverse=False)
-
         mean, logs = self.prior(x, y_onehot)
         objective += l.gaussian_likelihood(mean, logs, z)
-
         if self.y_condition:
             y_logits = self.project_class(z.mean(2).mean(2))
         else:
@@ -225,3 +205,18 @@ class Glow(nn.Module):
         for name, m in self.named_modules():
             if isinstance(m, l.ActNorm2d):
                 m.inited = True
+
+
+class Rescale(nn.Module):
+    """Per-channel rescaling. Need a proper `nn.Module` so we can wrap it
+    with `torch.nn.utils.weight_norm`.
+    Args:
+        num_channels (int): Number of channels in the input.
+    """
+    def __init__(self, num_channels):
+        super(Rescale, self).__init__()
+        self.weight = nn.Parameter(torch.ones(num_channels, 1, 1))
+
+    def forward(self, x):
+        x = self.weight * x
+        return x

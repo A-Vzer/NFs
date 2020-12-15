@@ -11,25 +11,25 @@ class Parameters:
         self.L = 3  # change dizz
         self.actNormScale = 1.0
         self.perm = "invconv"
-        self.coupling = "affine"
+        self.coupling = "cycle"
         self.LU = True
-        self.warmup = 5
+        self.warmup = 10
         # zero means clipping off
         self.max_grad_clip = 0
         self.max_grad_norm = 0
-        self.lr = 1e-3
-        self.n_init_batch = 8
+        self.lr = 1e-4
+        self.n_init_batch = 32
         self.y_classes = 10
         self.y_learn_top = False
         self.y_condition = False
         self.y_weight = 0.01
         self.loss = tools.loss
-        self.weigh_decay = 5e-5
+        self.weigh_decay = 1e-3
         self.lr_lambda = lambda epoch: min(1.0, (epoch + 1) / self.warmup)  # noqa
         self.initialize = True
         self.device = device
         self.model = model.Glow(imShape, self.hiddenUnits, self.K, self.L, self.actNormScale, self.perm,
-                                self.coupling, self.LU, self.y_classes, self.y_learn_top, self.y_condition)
+                                self.coupling, self.LU, self.y_classes, self.y_learn_top, self.y_condition, device)
         self.model = self.model.to(self.device)
         self.optimizer = optim.Adamax(self.model.parameters(), lr=self.lr, weight_decay=self.weigh_decay)
         self.scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=self.lr_lambda)
