@@ -53,14 +53,16 @@ def plot_samples(ims):
     plt.show()
 
 
-def plot_hist(nllts, dataset):
+def plot_hist(nllts, dataset, classTrained):
     plt.figure()
     for nllt, label in nllts:
-        sns.distplot(filter_threshold(-nllt, -10), norm_hist=True, label=label)
+        sns.distplot(filter_threshold(nllt, -10), norm_hist=True, label=label)
 
-    plt.title(f"Trained on {dataset.upper()} {classNo1}")
+    plt.title(f"Trained on {dataset.upper()} {classTrained}")
     plt.xlabel("Negative bits per dimension")
+    plt.ylabel("Relative frequency")
     plt.legend(fontsize=16)
+    plt.tick_params('y', left=False, labelleft=False)
     plt.show()
 
 
@@ -69,29 +71,33 @@ if __name__ == "__main__":
     device = "cpu" if (not torch.cuda.is_available() or not cuda) else "cuda:0"
     print(device)
     modelName = 'glow'
-    data_in = 'svhn'
-    data_out = 'cifar10'
+    data_in = 'isic'
+    data_out = 'isic'
     classNo1 = 1
-    classNo2 = 1
+    classNo2 = 9
     output_dir = "saves\\"
-    modelSave = "saves\\glow-cifar10-bs64-ep1000-lr001-class1_Final-L=3.pt"
-    sample = False
+    modelSave = "saves\\glow-isic-bs8-ep200-lr0001-classBenign.pt"
+    sample = False # remember 0-1 or -0.5-05 !!
     likelihood = True
     losscape = False
-    ds_in = Dataset(data_in, dataroot=dir_path, dataAugment=True, download=True, classNo=classNo1)
-    ds_out = Dataset(data_out, dataroot=dir_path, dataAugment=True, download=True, classNo=classNo2)
+    ds_in = Dataset(data_in, dataroot=dir_path, dataAugment=None, download=None, classNo=None)
+    ds_out = Dataset(data_out, dataroot=dir_path, dataAugment=None, download=None, classNo=None)
     adapter = Adapter(modelName, ds_in.data.imDim, device)
     if sample:
-        ims = sampler(modelName, modelSave, ds_in, n=512, temp=0.6)
+        ims = sampler(modelName, modelSave, ds_in, n=512, temp=1)
         plot_samples(ims)
     if likelihood:
-        nll_in_train = likelihoodEst(adapter, n=n, ds=ds_in, sampled=False, train=True).cpu().detach().numpy()
-        nll_in_test = likelihoodEst(adapter, n=n, ds=ds_in, sampled=False, train=False).cpu().detach().numpy()
-        nll_out = likelihoodEst(adapter, n=n, ds=ds_out, sampled=False, train=False).cpu().detach().numpy()
-        nllts = [-nll_in_train, -nll_in_test, -nll_out]
-        labels = ["1 train", "1 test", "CIFAR10: Car"]
-        plot_hist(zip(nllts, labels), data_in)
+        nll_in_train = likelihoodEst(adapter, n=512, ds=ds_in, sampled=False, train=True).cpu().detach().numpy()
+        # nll_in_test = likelihoodEst(adapter, n=512, ds=ds_in, sampled=False, train=False).cpu().detach().numpy()
+        nll_out = likelihoodEst(adapter, n=512, ds=ds_out, sampled=False, train=False).cpu().detach().numpy()
+        nllts = [-nll_in_train, -nll_out]
+        labels = ["Benign", "Malignant"]
+        plot_hist(zip(nllts, labels), data_in, 'benign')
     if losscape:
-        y = torch.load(modelSave)['trainLoss']
-        print(y)
-
+        y = torch.load(modelSave)['evalLoss']
+        plt.plot(y, c='r')
+        plt.title("Losscape of training 32x32 ISIC benign data")
+        plt.xlabel("Epochs")
+        plt.tick_params('y', left=False, labelleft=False)
+        plt.ylabel("Loss")
+        plt.show()

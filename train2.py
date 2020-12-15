@@ -7,7 +7,7 @@ from itertools import islice
 import os
 from barbar import Bar
 dir_path = os.path.dirname(os.path.realpath(__file__))
-
+from Glow import model
 
 def execute(modelName, ds, bs, eval_bs, eps, seed, n_workers, device, output_dir):
     check_manual_seed(seed)
@@ -73,18 +73,19 @@ def execute(modelName, ds, bs, eval_bs, eps, seed, n_workers, device, output_dir
 
 
 if __name__ == "__main__":
+    torch.cuda.empty_cache()
     cuda = True
     device = "cpu" if (not torch.cuda.is_available() or not cuda) else "cuda:0"
     print(device)
     modelName = 'glow'
-    dataset = 'mnist'
-    classNo = 8
+    dataset = 'isic'
+    classNo = 'Benign'
     dataroot = dir_path
     download = True
     dataAugment = True
-    bs = 64
+    bs = 8
     eval_bs = 512
-    eps = 40
+    eps = 200
     seed = 42069
     n_workers = 0
     output_dir = "saves\\"
@@ -93,7 +94,8 @@ if __name__ == "__main__":
     train = True
     sample = False
     likelihood = False
-    ds = Dataset(dataset, dataroot, dataAugment, download, classNo)
+    ds = Dataset(dataset, dataroot)
+    adapter = Adapter(modelName, ds.data.imDim, device)
     if train:
         print(f"Model: {modelName}, Dataset: {dataset}, bs: {bs}, eps: {eps}, classNo: {classNo}")
         modelSave = execute(modelName, ds, bs, eval_bs, eps, seed, n_workers, device, output_dir)

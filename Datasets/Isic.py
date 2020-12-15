@@ -12,17 +12,11 @@ import os.path
 
 
 class Isic:
-    def __init__(self, dataAugment, dataroot, dim=32):
-        test_transform = transforms.Compose([transforms.Resize([dim, dim]), transforms.ToTensor(), standardize])
-        if dataAugment:
-            transformations = [transforms.RandomAffine(0, translate=(0.1, 0.1)), transforms.RandomHorizontalFlip(), ]
-        else:
-            transformations = []
-        transformations.extend([transforms.Resize([32, 32]), transforms.ToTensor(), standardize])
-        train_transform = transforms.Compose(transformations)
+    def __init__(self, dataroot, dim=32):
+        transform = transforms.Compose([transforms.Resize([dim, dim]), transforms.ToTensor(), standardize])
         path = Path(dataroot) / "data" / "ISIC"
-        self.benign_dataset = ISICDataset(path, transform=train_transform, malignant=False)
-        self.malignent_dataset = ISICDataset(path, transform=test_transform, malignant=True)
+        self.train_dataset = ISICDataset(path, transform=transform, malignant=False)
+        self.test_dataset = ISICDataset(path, transform=transform, malignant=True)
         self.imDim = (dim, dim, 3)
         self.num_classes = 2
 
@@ -31,11 +25,11 @@ class ISICDataset(Dataset):
     def __init__(self, img_path, transform, malignant=False):
         self.img_path = img_path
         if malignant:
-            self.img_path = os.path.join(self.img_path, "benign/")
+            self.img_path = os.path.join(self.img_path, "malignant/")
             self.ims = os.listdir(self.img_path)
             self.target = 1
         else:
-            self.img_path = os.path.join(self.img_path, "malignant/")
+            self.img_path = os.path.join(self.img_path, "benign/")
             self.ims = os.listdir(self.img_path)
             self.target = 0
         self.transform = transform
@@ -44,7 +38,7 @@ class ISICDataset(Dataset):
         img_name = os.path.join(self.img_path, self.ims[index])
         img = Image.open(img_name)
         img = self.transform(img)
-        return {'image': img, 'label': self.target}
+        return img, self.target
 
     def __len__(self):
         return len(self.ims)
