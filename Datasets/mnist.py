@@ -7,7 +7,7 @@ from torchvision import transforms, datasets
 
 class Mnist:
     def __init__(self, dataAugment, dataroot, download, classNo):
-        self.imDim = (28, 28, 3)
+        self.imDim = (3, 3, 28)
         self.num_classes = 10
         test_transform = transforms.Compose([transforms.ToTensor(), standardize])
         if dataAugment:

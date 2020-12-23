@@ -12,3 +12,6 @@ class ConvNet:
                             l.Conv2d(hidden_channels, hidden_channels, kernel_size=(1, 1)), nn.ReLU(inplace=False),
                             l.Conv2dZeros(hidden_channels, out_channels))
         return block
+
+    def __call__(self, x):
+        return self.cnn(x)

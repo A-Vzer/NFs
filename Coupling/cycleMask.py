@@ -10,7 +10,7 @@ numpy.set_printoptions(threshold=sys.maxsize)
 
 
 class CycleMask(nn.Module):
-    def __init__(self, in_channels, out_channels, hidden_channels, device, cycles=2):
+    def __init__(self, in_channels, out_channels, hidden_channels, device, cycles=1):
         super().__init__()
         self.cycles = cycles
         # self.device = device

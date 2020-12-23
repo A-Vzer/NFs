@@ -7,7 +7,7 @@ from torchvision import transforms, datasets
 
 class Cifar10:
     def __init__(self, dataAugment, dataroot, download, classNo):
-        self.imDim = (32, 32, 3)
+        self.imDim = (3, 32, 32)
         self.num_classes = 10
         test_transform = transforms.Compose([transforms.ToTensor(), standardize])
         if dataAugment:

@@ -10,52 +10,58 @@ from Coupling.cycleMask import CycleMask
 
 
 class FlowStep(nn.Module):
-    def __init__(self, in_channels, hidden_channels, actnorm_scale, flow_permutation, flow_coupling, LU_decomposed, device):
+    def __init__(self, in_channels, params, conditional=None, level=None):
         super().__init__()
-        self.flow_coupling = flow_coupling
-        self.device = device
-        self.actnorm = l.ActNorm2d(in_channels, actnorm_scale)
+        hidden_channels = params.hiddenChannels
+        self.widths = params.convWidth
+        self.biases = params.spatialBiasing
+        self.k = params.kernel
+        self.level = level
+        self.conditional = conditional
+        self.modelName = params.modelName
+        self.flow_coupling = params.coupling
+        self.flow_permutation = params.perm
+        self.device = params.device
+        self.actnorm = l.ActNorm2d(in_channels, params.actNormScale).to(self.device)
         self.rescale = nn.utils.weight_norm(Rescale(in_channels))
-        self.eps = 1e-6
+        self.logscale_factor = params.zero_logscale_factor
+        self.use_logscale = params.zero_use_logscale
         
         # 2. permute
-        if flow_permutation == "invconv":
-            self.invconv = l.InvertibleConv1x1(in_channels, LU_decomposed=LU_decomposed)
+        if self.flow_permutation == "invconv":
+            self.invconv = l.InvertibleConv1x1(in_channels, LU_decomposed=params.LU).to(self.device)
             self.flow_permutation = lambda z, logdet, rev: self.invconv(z, logdet, rev)
-        elif flow_permutation == "shuffle":
-            self.shuffle = l.Permute2d(in_channels, shuffle=True)
+        elif self.flow_permutation == "shuffle":
+            self.shuffle = l.Permute2d(in_channels, shuffle=True).to(self.device)
             self.flow_permutation = lambda z, logdet, rev: (self.shuffle(z, rev), logdet,)
         else:
-            self.reverse = l.Permute2d(in_channels, shuffle=False)
+            self.reverse = l.Permute2d(in_channels, shuffle=False).to(self.device)
             self.flow_permutation = lambda z, logdet, rev: (self.reverse(z, rev), logdet,)
 
         # 3. coupling
-        if flow_coupling == "additive":
-            self.coupling = Additive(in_channels // 2, in_channels // 2, hidden_channels)
-        elif flow_coupling == "affine":
-            self.coupling = Additive(in_channels // 2, in_channels, hidden_channels)
-        elif flow_coupling == "checker":
-            self.coupling = SoftCheckerboard(in_channels, in_channels * 2, hidden_channels, self.device)
-        elif flow_coupling == "cycle":
-            self.coupling = CycleMask(in_channels, in_channels * 2, hidden_channels, self.device)
+        if self.flow_coupling == "additive":
+            self.coupling = Additive(in_channels // 2, in_channels // 2, hidden_channels, self)
+        elif self.flow_coupling == "affine":
+            self.coupling = Affine(in_channels // 2, in_channels, hidden_channels, self)
+        elif self.flow_coupling == "checker":
+            self.coupling = SoftCheckerboard(in_channels, in_channels * 2, hidden_channels, self)
+        elif self.flow_coupling == "cycle":
+            self.coupling = CycleMask(in_channels, in_channels * 2, hidden_channels, self)
 
-    def forward(self, input, logdet=None, reverse=False):
+    def forward(self, input, logdet, conditioning=None, reverse=False):
         if not reverse:
-            return self.normal_flow(input, logdet)
+            return self.normal_flow(input, logdet, conditioning)
         else:
             return self.reverse_flow(input, logdet)
 
-    def normal_flow(self, input, logdet):
-        assert input.size(1) % 2 == 0
-
+    def normal_flow(self, input, logdet, conditioning=None):
+        # assert input.size(1) % 2 == 0
         # 1. actnorm
         z, logdet = self.actnorm(input, logdet=logdet, reverse=False)
-
         # 2. permute
         z, logdet = self.flow_permutation(z, logdet, False)
-
         # 3. coupling
-        z, logdet = self.coupling(z, logdet, False)
+        z, logdet = self.coupling(z, logdet, conditioning, False)
 
         return z, logdet
 
@@ -75,45 +81,52 @@ class FlowStep(nn.Module):
 
 
 class FlowNet(nn.Module):
-    def __init__(self, image_shape, hidden_channels, K, L, actnorm_scale, flow_permutation, flow_coupling,
-            LU_decomposed, device):
+    def __init__(self, params, data_shape=None, level=None, conditional=None):
         super().__init__()
-
+        self.conditional = conditional
         self.layers = nn.ModuleList()
         self.output_shapes = []
+        self.K = params.K
+        self.modelName = params.modelName
+        if data_shape:
+            _, C, H, W = data_shape
+        else:
+            C, H, W = params.imShape
 
-        self.K = K
-        self.L = L
-
-        H, W, C = image_shape
-
-        for i in range(L):
-            # 1. Squeeze
-            C, H, W = C * 4, H // 2, W // 2
-            self.layers.append(l.SqueezeLayer(factor=2))
-            self.output_shapes.append([-1, C, H, W])
-
-            # 2. K FlowStep
-            for _ in range(K):
-                self.layers.append(FlowStep(in_channels=C, hidden_channels=hidden_channels, actnorm_scale=actnorm_scale,
-                    flow_permutation=flow_permutation, flow_coupling=flow_coupling, LU_decomposed=LU_decomposed, device=device))
+        if self.modelName != 'waveletglow':
+            self.L = params.L
+            for i in range(self.L):
+                # 1. Squeeze
+                C, H, W = C * 4, H // 2, W // 2
+                self.layers.append(l.SqueezeLayer(factor=2))
                 self.output_shapes.append([-1, C, H, W])
 
-            # 3. Split2d
-            if i < L - 1:
-                self.layers.append(l.Split2d(num_channels=C))
-                self.output_shapes.append([-1, C // 2, H, W])
-                C = C // 2
+                # 2. K FlowStep
+                for _ in range(self.K):
+                    self.layers.append(FlowStep(C, params))
+                    self.output_shapes.append([-1, C, H, W])
 
-    def forward(self, input, logdet=0.0, reverse=False, temperature=None):
+
+                # 3. Split2d
+                if i < self.L - 1:
+                    self.layers.append(l.Split2d(num_channels=C))
+                    self.output_shapes.append([-1, C // 2, H, W])
+                    C = C // 2
+        else:
+            # K FlowStep
+            for _ in range(self.K):
+                self.layers.append(FlowStep(C, params, self.conditional, level=level))
+                self.output_shapes.append([-1, C, H, W])
+
+    def forward(self, input, logdet, conditioning, reverse=False, temperature=None):
         if reverse:
             return self.decode(input, temperature)
         else:
-            return self.encode(input, logdet)
+            return self.encode(input, logdet, conditioning)
 
-    def encode(self, z, logdet=0.0):
+    def encode(self, z, logdet, conditioning):
         for layer, shape in zip(self.layers, self.output_shapes):
-            z, logdet = layer(z, logdet, reverse=False)
+                z, logdet = layer(z, logdet, conditioning, reverse=False)
         return z, logdet
 
     def decode(self, z, temperature=None):
@@ -126,26 +139,24 @@ class FlowNet(nn.Module):
 
 
 class Glow(nn.Module):
-    def __init__(self, image_shape, hidden_channels, K, L, actnorm_scale, flow_permutation, flow_coupling,
-            LU_decomposed, y_classes, learn_top, y_condition, device):
+    def __init__(self, params):
         super().__init__()
-        self.flow = FlowNet(image_shape=image_shape, hidden_channels=hidden_channels, K=K, L=L,
-            actnorm_scale=actnorm_scale, flow_permutation=flow_permutation, flow_coupling=flow_coupling,
-            LU_decomposed=LU_decomposed, device=device)
-        self.y_classes = y_classes
-        self.y_condition = y_condition
+        self.flow = FlowNet(params)
 
-        self.learn_top = learn_top
+        self.y_classes = params.y_classes
+        self.y_condition = params.y_condition
+
+        self.learn_top = params.y_learn_top
 
         # learned prior
-        if learn_top:
+        if self.learn_top:
             C = self.flow.output_shapes[-1][1]
             self.learn_top_fn = l.Conv2dZeros(C * 2, C * 2)
 
-        if y_condition:
+        if self.y_condition:
             C = self.flow.output_shapes[-1][1]
-            self.project_ycond = l.LinearZeros(y_classes, 2 * C)
-            self.project_class = l.LinearZeros(C, y_classes)
+            self.project_ycond = l.LinearZeros(self.y_classes, 2 * C)
+            self.project_class = l.LinearZeros(C, self.y_classes)
 
         self.register_buffer("prior_h", torch.zeros(
             [1, self.flow.output_shapes[-1][1] * 2, self.flow.output_shapes[-1][2],

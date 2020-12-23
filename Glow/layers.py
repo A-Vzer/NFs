@@ -98,7 +98,6 @@ class _ActNorm(nn.Module):
             return input + self.bias
 
     def _scale(self, input, logdet=None, reverse=False):
-
         if reverse:
             input = input * torch.exp(-self.logs)
         else:

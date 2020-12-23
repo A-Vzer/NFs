@@ -76,10 +76,10 @@ if __name__ == "__main__":
     classNo1 = 1
     classNo2 = 9
     output_dir = "saves\\"
-    modelSave = "saves\\glow-isic-bs8-ep200-lr0001-classBenign.pt"
+    modelSave = "saves\\checker\\glow-isic-bs8-ep350-lr0001-classBenign.pt"
     sample = False # remember 0-1 or -0.5-05 !!
-    likelihood = True
-    losscape = False
+    likelihood = False
+    losscape = True
     ds_in = Dataset(data_in, dataroot=dir_path, dataAugment=None, download=None, classNo=None)
     ds_out = Dataset(data_out, dataroot=dir_path, dataAugment=None, download=None, classNo=None)
     adapter = Adapter(modelName, ds_in.data.imDim, device)
