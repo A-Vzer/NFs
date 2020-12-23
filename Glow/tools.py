@@ -1,6 +1,7 @@
 import math
 import torch
 import torch.nn.functional as F
+from torchviz import make_dot
 
 
 def compute_same_pad(kernel_size, stride):
@@ -31,7 +32,7 @@ def uniform_binning_correction(x, n_bits=8):
     chw = c * h * w
     x += torch.zeros_like(x).uniform_(0, 1.0 / n_bins)
 
-    objective = -math.log(n_bins) * chw * torch.ones(b, device=x.device)
+    objective = -math.log(n_bins) * chw * torch.ones(b, requires_grad=True, device=x.device)
     return x, objective
 
 
@@ -82,11 +83,9 @@ def compute_loss_y(nll, y_logits, y_weight, y, multi_class, reduction="mean"):
 
 def loss(self, x, y):
     if self.y_condition:
-        x = x.to(self.device)
-        y = y.to(self.device)
         z, nll, y_logits = self.model(x, y)
         losses = compute_loss_y(nll, self.y_logits, self.y_weight, y, False)
     else:
-        z, nll, y_logits = self.model(x, None)
+        z, nll = self.model(x)
         losses = compute_loss(nll)
     return losses
