@@ -1,5 +1,5 @@
 from pathlib import Path
-from utils import standardize
+from utilities.utils import standardize
 import torch
 import torch.nn.functional as F
 from torchvision import transforms, datasets

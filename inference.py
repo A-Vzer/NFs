@@ -1,7 +1,7 @@
 import torch
-from utils import postprocess
-from datasets import Dataset
-from adapter import Adapter
+from utilities.utils import postprocess
+from Datasets.datasets import Dataset
+from models.adapter import Adapter
 import os
 import matplotlib.pyplot as plt
 from torchvision.utils import make_grid
@@ -70,18 +70,18 @@ if __name__ == "__main__":
     cuda = True
     device = "cpu" if (not torch.cuda.is_available() or not cuda) else "cuda:0"
     print(device)
-    modelName = 'glow'
+    modelName = 'waveletglow'
     data_in = 'isic'
     data_out = 'isic'
     classNo1 = 1
     classNo2 = 9
     output_dir = "saves\\"
-    modelSave = "saves\\checker\\glow-isic-bs8-ep350-lr0001-classBenign.pt"
-    sample = False # remember 0-1 or -0.5-05 !!
+    modelSave = "saves\\waveletglow-isic-bs16-ep500-lr0001-classbenign.pt"
+    sample = False  # remember 0-1 or -0.5-05 !!
     likelihood = False
     losscape = True
-    ds_in = Dataset(data_in, dataroot=dir_path, dataAugment=None, download=None, classNo=None)
-    ds_out = Dataset(data_out, dataroot=dir_path, dataAugment=None, download=None, classNo=None)
+    ds_in = Dataset(data_in, dataroot=dir_path)
+    ds_out = Dataset(data_out, dataroot=dir_path)
     adapter = Adapter(modelName, ds_in.data.imDim, device)
     if sample:
         ims = sampler(modelName, modelSave, ds_in, n=512, temp=1)
