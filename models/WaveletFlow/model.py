@@ -6,12 +6,12 @@ from models.WaveletFlow.flowUnit import FlowUnit
 
 
 class WaveletFlow(nn.Module):
-    def __init__(self, params):
+    def __init__(self, conditioning_network, params, level=-1):
         super().__init__()
 
         self.n_levels = params.nLevels
         self.base_level = params.baseLevel
-        self.partial_level = params.partialLevel
+        self.partial_level = level
         self.haar_squeeze_split = SqueezeSplit(compensate=True, device=params.device)
 
         if self.partial_level == -1 or self.partial_level == self.base_level:
@@ -33,7 +33,7 @@ class WaveletFlow(nn.Module):
                 self.sub_flows.append(
                     FlowUnit(params, [9, H, W], level, conditional=True))
 
-        self.conditioning_network = params.conditionNetwork
+        self.conditioning_network = conditioning_network
 
     def forward(self, x, partial_level=-1, reverse=False):
         latents = []
@@ -89,9 +89,9 @@ class WaveletFlow(nn.Module):
                     # decompose base
                     if self.partial_level <= 8 and level > 8:  # i think this is where we use pre downsampled data
                         pass
-                    # else:  # perform dowsampling, but don't build flow
-                    #     haar = self.haar_squeeze_split.forward(base)
-                    #     base = haar.base
+                    else:  # perform dowsampling, but don't build flow
+                        haar = self.haar_squeeze_split.forward(base)
+                        base = haar.base
 
                     latents.append(None)
 

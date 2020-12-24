@@ -12,7 +12,6 @@ def check_manual_seed(seed):
 
     print("Using seed: {seed}".format(seed=seed))
 
-
 def standardize(x):
     n_bits = 8
     x = x * 255  # undo ToTensor scaling to [0,1]
