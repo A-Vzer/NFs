@@ -9,15 +9,13 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 os.environ["PATH"] += os.pathsep + 'C:/Program Files/Graphviz2.44.1/bin/'
 
 
-class RunGlow:
+class RunWaveletFlow:
     def __init__(self, model, device):
         self.device = device
         self.model = model
 
-    def initialize(self, dataset, bs, eval_bs, seed, n_workers):
+    def initialize(self, ds, bs, seed):
         check_manual_seed(seed)
-        ds = Dataset(dataset, dir_path, bs, eval_bs, n_workers)
-
         if self.model.initialize:
             print('Initializing...')
             self.model.train()
@@ -36,7 +34,7 @@ class RunGlow:
 
         return ds.train_loader, ds.test_loader
 
-    def train_step(self, train_loader, loss, params):
+    def train_step(self, train_loader, loss):
         for idx, (x, y) in enumerate(Bar(train_loader)):
             x = x.to(self.device)
             y = y.to(self.device)
@@ -48,12 +46,11 @@ class RunGlow:
             loss.append(losses["total_loss"].item())
         return loss
 
-    def eval_step(self, test_loader, eval_loss, params):
+    def eval_step(self, test_loader, eval_loss):
         for idx, (x, y) in enumerate(Bar(test_loader)):
             self.model.eval()
             x = x.to(self.device)
-            y = y.to(self.device)
             with torch.no_grad():
-                eval_loss_ = self.model.compute_loss(x, y)
+                eval_loss_ = self.model.compute_loss(x, None)
                 eval_loss.append(eval_loss_["total_loss"].item())
         return eval_loss

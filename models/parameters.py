@@ -30,13 +30,4 @@ class Parameters:
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
 
     def sampler(self, bs, temp, n=10):
-        if self.y_condition:
-            y = torch.eye(n)
-            y = y.repeat(bs // n)
-            y = y[:32, :].to(self.device)
-        else:
-            y = None
-
-        images = self.model(y_onehot=y, temperature=temp, reverse=True)
-
-        return images
+        pass

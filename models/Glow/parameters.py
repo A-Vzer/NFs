@@ -1,7 +1,7 @@
 from models.Glow import model, tools
 import torch
 import torch.optim as optim
-from models.model import Parameters
+from models.parameters import Parameters
 
 
 class GlowParameters(Parameters):

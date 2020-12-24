@@ -2,17 +2,19 @@ from models.WaveletFlow import model
 import torch
 import torch.optim as optim
 from models.WaveletFlow.conditionNet import ConditioningNetwork
-from models.model import Parameters
+from models.parameters import Parameters
+from models.WaveletFlow.networkBody import Network
 
 
-class WaveletFlowParamters(Parameters):
-    def __init__(self, imShape, device):
+class WaveletFlowParameters(Parameters):
+    def __init__(self, level, imShape, device):
         super().__init__(imShape, device)
         self.modelName = 'waveletflow'
-        self.model = model.WaveletFlow(self).to(device)
-        self.conditionNetwork = ConditioningNetwork()
         self.spatialBiasing = [False, False, False, False, False, False, False]  # not implemented yet
         self.stepsPerResolution = [8, 8, 16, 16, 16, 16, 16]
+        self.cropFactor = [1, 1, 1, 1, 1, 2, 2]
+        self.n_batch = [64, 64, 64, 64, 64, 64, 64]
+        self.n_ddi_batch = [64, 64, 64, 64, 64, 64, 64]
         self.nLevels = 6
         self.kernel = 3
         self.baseLevel = 0
@@ -27,6 +29,7 @@ class WaveletFlowParamters(Parameters):
         self.normalize = True
         self.actNormScale = 3.0
         self.zero_logscale_factor = 3.0
+        self.model = Network(level, self)
         self.optimizer = optim.Adamax(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         self.scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=self.lr_lambda)
 

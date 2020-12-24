@@ -16,4 +16,4 @@ class Step(nn.Module):
 class Flow(FlowStep):
     def __init__(self, C, params, conditional, level):
         super().__init__(params, C)
-        self.coupling = Residual(C, params, conditional, level)
+        self.coupling = Residual(params, conditional, level)
