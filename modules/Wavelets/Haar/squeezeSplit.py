@@ -22,7 +22,7 @@ class SqueezeSplit(nn.Module):
             C = base.size(1)
             H = base.size(2)
             W = base.size(3)
-            n_dim = torch.tensor(H * W * C, dtype=torch.float, requires_grad=True)
+            n_dim = torch.tensor(H * W * C, dtype=torch.float, requires_grad=False)
 
             base = base * 0.5  # haar base is 2*average
             ldj = np.log(0.5) * n_dim

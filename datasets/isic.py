@@ -20,11 +20,11 @@ class Isic:
 class ISICDataset(Dataset):
     def __init__(self, img_path, transform, malignant=False):
         if malignant:
-            self.img_path = os.path.join(img_path, "malignant/")
+            self.img_path = os.path.join(img_path, "malignant\\")
             self.ims = os.listdir(self.img_path)
             self.target = 1
         else:
-            self.img_path = os.path.join(img_path, "benign/")
+            self.img_path = os.path.join(img_path, "benign\\")
             self.ims = os.listdir(self.img_path)
             self.target = 0
         self.transform = transform

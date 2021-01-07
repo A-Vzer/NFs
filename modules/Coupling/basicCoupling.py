@@ -1,13 +1,14 @@
 import torch
+import torch.nn as nn
 from utilities.utils import split_feature
 from models.ConvNet import openai_conv
 from models.ConvNet import convNet
 
 
-class Additive:
-    def __init__(self, in_channels, out_channels, hidden_channels, flow):
+class Additive(nn.Module):
+    def __init__(self, in_channels, out_channels, hidden_channels, device):
         super().__init__()
-        self.block = convNet.ConvNet(in_channels, out_channels, hidden_channels, flow.device)
+        self.block = convNet.ConvNet(in_channels, out_channels, hidden_channels, device)
 
     def forward(self, x, logdet, reverse=False):
         z1, z2 = split_feature(x, 'split')
@@ -20,10 +21,10 @@ class Additive:
         return z, logdet
 
 
-class Affine:
-    def __init__(self, in_channels, out_channels, hidden_channels, flow):
+class Affine(nn.Module):
+    def __init__(self, in_channels, out_channels, hidden_channels, device):
         super().__init__()
-        self.block = convNet.ConvNet(in_channels, out_channels, hidden_channels, flow.device)
+        self.block = convNet.ConvNet(in_channels, out_channels, hidden_channels, device)
 
     def get_param(self, x):
         z1, z2 = split_feature(x, "split")

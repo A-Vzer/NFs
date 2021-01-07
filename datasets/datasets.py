@@ -1,4 +1,4 @@
-from Datasets import cifar, svhn, mnist, isic, celeb
+from datasets import cifar, svhn, mnist, isic, celeb
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from utilities.utils import standardize
@@ -28,7 +28,7 @@ class Dataset:
             self.data = celeb.CelebA(dataroot)
 
         if crop is not None:
-            dim = self.data.imDim[0]
+            dim = self.data.imDim[-1]
             dim = dim // crop
             self.data.train_dataset.transform = transforms.Compose(
                 [transforms.RandomCrop([dim, dim]), transforms.ToTensor(), standardize])

@@ -3,15 +3,16 @@ import torch.nn as nn
 import numpy as np
 from modules.Wavelets.Haar.squeezeSplit import SqueezeSplit
 from models.WaveletFlow.flowUnit import FlowUnit
+import math
 
 
 class WaveletFlow(nn.Module):
     def __init__(self, conditioning_network, params, level=-1):
         super().__init__()
-
         self.n_levels = params.nLevels
         self.base_level = params.baseLevel
         self.partial_level = level
+        self.device = params.device
         self.haar_squeeze_split = SqueezeSplit(compensate=True, device=params.device)
 
         if self.partial_level == -1 or self.partial_level == self.base_level:
@@ -21,8 +22,8 @@ class WaveletFlow(nn.Module):
         else:
             self.base_flow = None
 
-        start_flow_padding = [None] * self.base_level  # add padding, since base may not be 0
-        self.sub_flows = start_flow_padding + [self.base_flow]  # append base
+        start_flow_padding = nn.ModuleList([None] * self.base_level)  # add padding, since base may not be 0
+        self.sub_flows = start_flow_padding.append(self.base_flow)  # append base
         for level in range(self.base_level + 1, self.n_levels + 1):
             params.K = params.stepsPerResolution[level]
             if self.partial_level != -1 and self.partial_level != level:
@@ -80,9 +81,10 @@ class WaveletFlow(nn.Module):
                         latent, ld = flow.forward(details, conditioning=conditioning)
 
                     latents.append(latent)
-                    haar_ldj = torch.full(ld.shape, np.log(0.5) * (self.n_levels - level), device=details.device,
-                                          requires_grad=True)
+                    haar_ldj = torch.full(ld.shape, flow.shape[0] * flow.shape[1] * flow.shape[2] * np.log(0.5) *
+                                          (self.n_levels - level), device=self.device)
                     log_density += ld + haar_ldj  # need custom haar_ldj because of partial
+                    log_density = (-log_density) / (flow.shape[0] * flow.shape[1] * flow.shape[2] * math.log(2.0))
                     if partial_level != -1:
                         break  # stop of we are doing partial
                 else:
@@ -95,7 +97,7 @@ class WaveletFlow(nn.Module):
 
                     latents.append(None)
 
-            return latents, log_density
+            return latents, log_density, None
 
     def sample_latents(self, n_batch=1, temperature=1.0):
         latents = [None] * self.base_level

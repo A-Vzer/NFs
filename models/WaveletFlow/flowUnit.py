@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from models.WaveletFlow.multiStep import MultiStep
-from modules.layers import ActNorm2d
+from modules.layers import ActNorm2d, Act_norm
 import numpy as np
 import math
 from utilities.utils import uniform_binning_correction
@@ -14,17 +14,16 @@ class FlowUnit(nn.Module):
         self.H = shape[1]
         self.W = shape[2]
         self.shape = shape
-        data_shape = [1, self.C, self.H, self.W]
         params.n_squeezes = 0
         self.device = params.device
         # generate flow layers here
-        self.step = MultiStep(params, data_shape, level, conditional)
+        self.step = MultiStep(params, shape, level, conditional)
         # base measure tforms
         # if self.spatial_bias:
         #     self.base_tform = bijector.Element_shift_scale()
         # else:
         #     self.base_tform = bijector.Act_norm()
-        self.base_tform = ActNorm2d(self.C).to(self.device)
+        self.base_tform = Act_norm(params.actNormScale).to(self.device)
 
     def forward(self, x, conditioning=None, reverse=False):
         z = x
@@ -38,11 +37,10 @@ class FlowUnit(nn.Module):
             return z
         else:
             z, logdet = self.step.forward(x, logdet, conditioning)
-            z, logdet = self.base_tform.forward(z, logdet)
+            z, b_logdet = self.base_tform.forward(z)
             ld = self.latent_log_density(z)
             log_density = logdet + ld
-            bpd = (-log_density) / (math.log(2.0) * self.C * self.H * self.W)
-            return z, bpd
+            return z, log_density
 
     def latent_log_density(self, latent):
         '''

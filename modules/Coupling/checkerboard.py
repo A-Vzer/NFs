@@ -4,11 +4,11 @@ from models.ConvNet import convNet
 from utilities.utils import split_feature, Rescale
 
 
-class Checkerboard:
-    def __init__(self, in_channels, out_channels, hidden_channels, flow):
+class Checkerboard(nn.Module):
+    def __init__(self, in_channels, out_channels, hidden_channels, device):
         super().__init__()
-        self.device = flow.device
-        self.block = convNet.ConvNet(in_channels, out_channels, hidden_channels, self.device)
+        self.device = device
+        self.block = convNet.ConvNet(in_channels, out_channels, hidden_channels, device)
         self.rescale = nn.utils.weight_norm(Rescale(in_channels))
 
     def get_param(self, x):

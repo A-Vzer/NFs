@@ -1,16 +1,18 @@
+import os, sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch
 import torch.nn as nn
 from utilities.utils import split_feature, Rescale
 from models.ConvNet.convNet import ConvNet
 import sys
 import numpy
-from modules.Coupling.coupling import Coupling
 numpy.set_printoptions(threshold=sys.maxsize)
+import matplotlib.pyplot as plt
 
 
-# samples from this mask are oddly similar to checkerboard masked samples...
-class CycleMask(Coupling):
-    def __init__(self, in_channels, out_channels, hidden_channels, device, cycles=1):
+
+class CycleMask(nn.Module):
+    def __init__(self, in_channels, out_channels, hidden_channels, device, cycles=2):
         super().__init__()
         self.cycles = cycles
         self.block = ConvNet(in_channels, out_channels, hidden_channels, device)

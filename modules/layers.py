@@ -2,7 +2,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from utilities.utils import compute_same_pad
+from utilities.utils import compute_same_pad, split_feature
 
 
 def gaussian_p(mean, logs, x):
@@ -141,12 +141,9 @@ class ActNorm2d(_ActNorm):
 
     def _check_input_dim(self, input):
         assert len(input.size()) == 4
-        assert input.size(1) == self.num_features, (
-            "[ActNorm]: input should be in shape as `BCHW`,"
-            " channels should be {} rather than {}".format(
-                self.num_features, input.size()
-            )
-        )
+        assert input.size(1) == self.num_features, ("[ActNorm]: input should be in shape as `BCHW`,"
+                                                    " channels should be {} rather than {}".format(self.num_features,
+            input.size()))
 
 
 class LinearZeros(nn.Module):
@@ -167,16 +164,8 @@ class LinearZeros(nn.Module):
 
 
 class Conv2d(nn.Module):
-    def __init__(
-        self,
-        in_channels,
-        out_channels,
-        kernel_size=(3, 3),
-        stride=(1, 1),
-        padding="same",
-        do_actnorm=True,
-        weight_std=0.05,
-    ):
+    def __init__(self, in_channels, out_channels, kernel_size=(3, 3), stride=(1, 1), padding="same", do_actnorm=True,
+            weight_std=0.05):
         super().__init__()
 
         if padding == "same":
@@ -184,14 +173,7 @@ class Conv2d(nn.Module):
         elif padding == "valid":
             padding = 0
 
-        self.conv = nn.Conv2d(
-            in_channels,
-            out_channels,
-            kernel_size,
-            stride,
-            padding,
-            bias=(not do_actnorm),
-        )
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=(not do_actnorm), )
 
         # init weight with std
         self.conv.weight.data.normal_(mean=0.0, std=weight_std)
@@ -211,15 +193,8 @@ class Conv2d(nn.Module):
 
 
 class Conv2dZeros(nn.Module):
-    def __init__(
-        self,
-        in_channels,
-        out_channels,
-        kernel_size=(3, 3),
-        stride=(1, 1),
-        padding="same",
-        logscale_factor=3,
-    ):
+    def __init__(self, in_channels, out_channels, kernel_size=(3, 3), stride=(1, 1), padding="same",
+            logscale_factor=3, ):
         super().__init__()
 
         if padding == "same":
@@ -277,7 +252,7 @@ class Split2d(nn.Module):
 
     def split2d_prior(self, z):
         h = self.conv(z)
-        return t.split_feature(h, "cross")
+        return split_feature(h, "cross")
 
     def forward(self, input, logdet=0.0, reverse=False, temperature=None):
         if reverse:
@@ -287,7 +262,7 @@ class Split2d(nn.Module):
             z = torch.cat((z1, z2), dim=1)
             return z, logdet
         else:
-            z1, z2 = t.split_feature(input, "split")
+            z1, z2 = split_feature(input, "split")
             mean, logs = self.split2d_prior(z1)
             logdet = gaussian_likelihood(mean, logs, z2) + logdet
             return z1, logdet
@@ -382,3 +357,55 @@ class InvertibleConv1x1(nn.Module):
             if logdet is not None:
                 logdet = logdet - dlogdet
             return z, logdet
+
+
+class Act_norm(nn.Module):
+    def __init__(self, logscale):
+        super().__init__()
+        self.epsilon = 0.00001
+        self.std_log_scale_factor = logscale
+
+        self.mean = None
+        self.log_std = None
+
+    def get_mean_log_var(self, x):
+        # we need this to init based on input tensor shape
+        if self.mean is None:
+            self.mean = torch.full((1, x.size(1), 1, 1), 0, device=x.device)
+            self.log_std = torch.full((1, x.size(1), 1, 1), 0, device=x.device)
+
+        # log_std_scaled = self.log_std*self.std_log_scale_factor
+        return self.mean, self.log_std
+
+    def forward(self, x, init=False):
+        e_mean = torch.mean(x, (0, 1, 2), keepdim=True)
+        e_var = torch.std(x, (0, 1, 2), keepdim=True)
+        mean, log_std = self.get_mean_log_var(x)
+        if init:  # do ddi if doing init
+            mean = mean.assign(e_mean)
+            log_std_init = torch.log(torch.sqrt(e_var)) / self.std_log_scale_factor
+            log_std = log_std.assign(log_std_init)
+
+        log_std = log_std * self.std_log_scale_factor
+        inv_std = torch.exp(-log_std)
+
+        # normalize
+        y = (x - mean) * inv_std
+
+        # ldj
+        h = x.size(1)
+        w = x.size(2)
+        ldj = h * w * -torch.sum(log_std, dim=(1, 2, 3))
+
+
+        return y, ldj
+
+    def inverse(self, y):
+        mean, log_std = self.get_mean_log_var(y.size(3))
+        log_std = log_std * self.std_log_scale_factor
+        x = (y * torch.exp(log_std)) + mean
+
+        h = x.size(1)
+        w = x.size(2)
+        ldj = h * w * torch.sum(log_std, dim=(1, 2, 3))
+        return x, ldj

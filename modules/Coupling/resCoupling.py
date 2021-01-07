@@ -4,7 +4,7 @@ from models.ConvNet.openai_conv import *
 from utilities.utils import split_feature, Rescale
 
 
-class Residual:
+class Residual(nn.Module):
     def __init__(self, params, conditional, level):
         super().__init__()
         self.conditional = conditional
@@ -12,7 +12,7 @@ class Residual:
         self.normalize = params.normalize
         self.log_scale_factor = params.zero_logscale_factor
         self.use_logscale = params.zero_use_logscale
-        self.rescale = nn.utils.weight_norm(Rescale(params.imShape[0]))
+        self.rescale = nn.utils.weight_norm(Rescale(2))
         self.k = params.kernel
         n_res_blocks = params.n_res_blocks
         width = params.convWidth[level]
@@ -32,16 +32,18 @@ class Residual:
 
         if conditioning is not None:
             self.block = OpenAiZeroConv(self.k, z2_out, 1, self.edge_bias, self.use_logscale, self.log_scale_factor)
-            z1 = torch.cat([z1, conditioning], dim=1)
+            z1_c = torch.cat([z1, conditioning], dim=1)
         else:
+            z1_c = z1
             self.block = OpenAiZeroConv(self.k, z2_out, 1, self.edge_bias, self.use_logscale, self.log_scale_factor)
-        h = self.block(z1)
+        h = self.block(z1_c)
         s, t = split_feature(h, "cross")
-        s = self.rescale(torch.tanh(s))
+        s = torch.tanh(s)
         return s, t, z1, z2
 
     def forward(self, x, logdet, cond, reverse=False):
         s, t, z1, z2 = self.get_param(x, cond)
+
         exp_s = s.exp()
         if reverse:
             z2 = z2 * exp_s - t
@@ -53,10 +55,9 @@ class Residual:
         return z, logdet
 
 
-class ResidualBlock:
+class ResidualBlock(nn.Module):
     def __init__(self, k, width, edge_bias, normalize):
         super().__init__()
-
         self.conv1 = OpenAiConv(k, width, 1, edge_bias, normalize)
         self.conv2 = OpenAiConv(1, width, 1, edge_bias, 'none', normalize)
 

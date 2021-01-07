@@ -3,12 +3,12 @@ from models.WaveletFlow.step import Step
 
 
 class MultiStep(nn.Module):
-    def __init__(self, params, data_shape, level, conditional):
+    def __init__(self, params, shape, level, conditional):
         super().__init__()
-        self.steps = []
+        self.steps = nn.ModuleList()
         self.n_steps = params.stepsPerResolution[level]
         for n in range(self.n_steps):
-            self.steps.append(Step(params, conditional, level))
+            self.steps.append(Step(params, shape, conditional, level))
 
     def forward(self, x, logdet, conditioning=None, reverse=False):
         z = x

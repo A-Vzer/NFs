@@ -14,14 +14,15 @@ class Parameters:
         # zero means clipping is off
         self.max_grad_clip = 0
         self.max_grad_norm = 0
+        self.initialize = True
         self.LU = True
         self.warmup = 10
-        self.n_init_batch = 32
+        self.n_init_batch = 16
         self.actNormScale = 1.0
         self.perm = "invconv"
 
-    def compute_loss(self, x, y):
-        return loss(self, x, y)
+    def compute_loss(self, x, y, level=None):
+        return loss(self, x, y, level)
 
     def clip_gradients(self):
         if self.max_grad_clip > 0:
