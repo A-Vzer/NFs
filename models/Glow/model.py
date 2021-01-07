@@ -1,3 +1,5 @@
+import os, sys
+sys.path.append(os.path.dirname((os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 import torch
 import torch.nn as nn
 from utilities.utils import split_feature, uniform_binning_correction
@@ -13,50 +15,54 @@ class FlowStep(nn.Module):
         hidden_channels = params.hiddenChannels
         self.flow_permutation = params.perm
         self.flow_coupling = params.coupling
+        self.device = params.device
+
+        self.actnorm = ActNorm2d(in_channels, params.actNormScale)
 
         # 2. permute
         if self.flow_permutation == "invconv":
-            self.invconv = InvertibleConv1x1(in_channels, LU_decomposed=params.LU).to(self.device)
+            self.invconv = InvertibleConv1x1(in_channels, LU_decomposed=params.LU)
             self.flow_permutation = lambda z, logdet, rev: self.invconv(z, logdet, rev)
         elif self.flow_permutation == "shuffle":
-            self.shuffle = Permute2d(in_channels, shuffle=True).to(self.device)
+            self.shuffle = Permute2d(in_channels, shuffle=True)
             self.flow_permutation = lambda z, logdet, rev: (self.shuffle(z, rev), logdet,)
         else:
-            self.reverse = Permute2d(in_channels, shuffle=False).to(self.device)
+            self.reverse = Permute2d(in_channels, shuffle=False)
             self.flow_permutation = lambda z, logdet, rev: (self.reverse(z, rev), logdet,)
 
         # 3. coupling
         if self.flow_coupling == "additive":
-            self.coupling = Additive(in_channels // 2, in_channels // 2, hidden_channels, self)
+            self.coupling = Additive(in_channels // 2, in_channels // 2, hidden_channels, self.device)
         elif self.flow_coupling == "affine":
-            self.coupling = Affine(in_channels // 2, in_channels, hidden_channels, self)
+            self.coupling = Affine(in_channels // 2, in_channels, hidden_channels, self.device)
         elif self.flow_coupling == "checker":
-            self.coupling = Checkerboard(in_channels, in_channels * 2, hidden_channels, self)
+            self.coupling = Checkerboard(in_channels, in_channels * 2, hidden_channels, self.device)
         elif self.flow_coupling == "cycle":
-            self.coupling = CycleMask(in_channels, in_channels * 2, hidden_channels, self)
+            self.coupling = CycleMask(in_channels, in_channels * 2, hidden_channels, self.device)
 
-    def forward(self, input, logdet, reverse=False):
+    def forward(self, input, logdet, conditioning=None, reverse=False):
         if not reverse:
-            return self.normal_flow(input, logdet)
+            return self.normal_flow(input, logdet, conditioning)
         else:
-            return self.reverse_flow(input, logdet)
+            return self.reverse_flow(input, logdet, conditioning)
 
-    def normal_flow(self, input, logdet):
+    def normal_flow(self, input, logdet, conditioning):
         # assert input.size(1) % 2 == 0
         # 1. actnorm
         z, logdet = self.actnorm(input, logdet=logdet)
         # 2. permute
         z, logdet = self.flow_permutation(z, logdet, False)
         # 3. coupling
-        z, logdet = self.coupling(z, logdet)
+        z, logdet = self.coupling(z, logdet, conditioning)
 
         return z, logdet
 
-    def reverse_flow(self, input, logdet):
+    def reverse_flow(self, input, logdet, conditioning):
         assert input.size(1) % 2 == 0
 
         # 1.coupling
-        z, logdet = self.coupling(input, logdet, reverse=True)
+        z, logdet = self.coupling(input, logdet, conditioning, reverse=True) if conditioning is not None else \
+            self.coupling(input, logdet, reverse=True)
 
         # 2. permute
         z, logdet = self.flow_permutation(z, logdet, True)
@@ -85,7 +91,7 @@ class FlowNet(nn.Module):
 
             # 2. K FlowStep
             for _ in range(self.K):
-                self.layers.append(FlowStep(C, params))
+                self.layers.append(FlowStep(params, C))
                 self.output_shapes.append([-1, C, H, W])
 
             # 3. Split2d
@@ -121,7 +127,6 @@ class Glow(nn.Module):
 
         self.y_classes = params.y_classes
         self.y_condition = params.y_condition
-
         self.learn_top = params.y_learn_top
 
         # learned prior
