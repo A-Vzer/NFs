@@ -1,9 +1,12 @@
-from Datasets import cifar, svhn, mnist, isic, celeb
+from datasets import cifar, svhn, mnist, isic, celeb
 from torch.utils.data import DataLoader
+from torchvision import transforms
+from utilities.utils import standardize
 
 
 class Dataset:
-    def __init__(self, nameDataset, dataroot, bs, eval_bs, n_workers, dataAugment=None, download=None, classNo=None):
+    def __init__(self, nameDataset, dataroot, bs, eval_bs, n_workers, dataAugment=None, download=None, classNo=None,
+                 crop=None):
         self.bs = bs
         self.eval_bs = eval_bs
         self.n_workers = n_workers
@@ -23,6 +26,14 @@ class Dataset:
         if nameDataset == 'celeb':
             self.nameDataset = nameDataset
             self.data = celeb.CelebA(dataroot)
+
+        if crop is not None:
+            dim = self.data.imDim[-1]
+            dim = dim // crop
+            self.data.train_dataset.transform = transforms.Compose(
+                [transforms.RandomCrop([dim, dim]), transforms.ToTensor(), standardize])
+            self.data.test_dataset.transform = transforms.Compose(
+                [transforms.RandomCrop([dim, dim]), transforms.ToTensor(), standardize])
 
         self.train_loader, self.test_loader = self.get_loaders()
 

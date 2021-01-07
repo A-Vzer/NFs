@@ -68,13 +68,12 @@ class Squeeze(nn.Module):
         C = x.size(1)
         H = x.size(2)
         W = x.size(3)
-
         # make sure we can divide nicely
         assert H % factor == 0 and W % factor == 0, '({},{}) not dividing by {} nicely'.format(H, W, factor)
 
         # get kernel for haar
         haar_kernel = self.get_haar_kernel(C)
-        haar_kernel = torch.tensor(haar_kernel, dtype=torch.float, requires_grad=True, device=self.device)
+        haar_kernel = torch.tensor(haar_kernel, dtype=torch.float, requires_grad=False, device=self.device)
         # reshape to add two auxillary dimensions
         y = torch.reshape(x, [-1, H // factor, factor, W // factor, factor, C])
 

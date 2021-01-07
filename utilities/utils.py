@@ -12,7 +12,6 @@ def check_manual_seed(seed):
 
     print("Using seed: {seed}".format(seed=seed))
 
-
 def standardize(x):
     n_bits = 8
     x = x * 255  # undo ToTensor scaling to [0,1]
@@ -150,12 +149,12 @@ def compute_loss_y(nll, y_logits, y_weight, y, multi_class, reduction="mean"):
     return losses
 
 
-def loss(self, x, y):
+def loss(self, x, y, level):
     if self.y_condition:
-        z, nll, y_logits = self.model(x, y)
+        z, nll, y_logits = self.model(x, y, level) if level is not None else self.model(x, y)
         losses = compute_loss_y(nll, self.y_logits, self.y_weight, y, False)
     else:
-        z, nll = self.model(x)
+        z, nll, y_logits = self.model(x, level) if level is not None else self.model(x)
         losses = compute_loss(nll)
     return losses
 
