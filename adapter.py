@@ -1,7 +1,7 @@
-from Glow.parameters import GlowParameters
-from Glow import scripts as glow
-from WaveletFlow.parameters import WaveletFlowParameters
-from WaveletFlow import scripts as waveletglow
+from models.Glow.parameters import GlowParameters
+from models.Glow import scripts as glow
+from models.WaveletFlow.parameters import WaveletFlowParameters
+from models.WaveletFlow import scripts as waveletglow
 
 
 class Adapter:

@@ -1,11 +1,9 @@
 import torch
-from datasets.datasets import Dataset
-from models.adapter import Adapter
 from modules.Wavelets.Haar.squeezeSplit import SqueezeSplit
 from utilities.utils import check_manual_seed
 from itertools import islice
 import os
-from barbar import Bar
+
 dir_path = os.path.dirname(os.path.realpath(__file__))
 os.environ["PATH"] += os.pathsep + 'C:/Program Files/Graphviz2.44.1/bin/'
 

@@ -1,8 +1,11 @@
+import os
+import sys
+dir_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.append(dir_path)
 import torch
 from adapter import Adapter
-import os
 from datasets.datasets import Dataset
-dir_path = dir_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+import argparse
 
 
 def execute():
@@ -22,7 +25,7 @@ def execute():
         eval_loss = adapter.scripts.eval_step(test_loader, eval_loss)
         avgEval.append(sum(eval_loss)/len(eval_loss))
         print(f'Avg eval loss: {avgEval[-1]}')
-        save_name(adapter, i, loss, lastEval, avgEval)
+        lastEval = save_name(adapter, i, loss, lastEval, avgEval)
 
 
 def save_name(adapter, idx, loss, lastEval, avgEval):
@@ -40,19 +43,23 @@ def save_name(adapter, idx, loss, lastEval, avgEval):
         torch.save({'epoch': idx, 'model_state_dict': adapter.flow.model.state_dict(),
                     'optimizer_state_dict': adapter.flow.optimizer.state_dict(), 'trainLoss': loss,
                     'evalLoss': avgEval}, dir_path + '\\' + output_dir + directory)
+    return lastEval
 
 
 if __name__ == "__main__":
     torch.cuda.empty_cache()
+    argParser = argparse.ArgumentParser(description="start/resume training")
+    argParser.add_argument("-b", "--batchsize", dest="bs", action="store", default=16, type=int)
+    argParser.add_argument("-e", "--epochs", dest="eps", action="store", default=1000, type=int)
+    argParser.add_argument("-evalbs", "--evaluationbatchsize", dest="evalbs", action="store", default=512, type=int)
+    cmd_args = argParser.parse_args()
     cuda = True
     device = "cpu" if (not torch.cuda.is_available() or not cuda) else "cuda:0"
     dataset = 'isic'
     classNo = 'benign'
-    download = True
-    dataAugment = True
-    bs = 4
-    eval_bs = 512
-    eps = 500
+    bs = cmd_args.bs
+    eval_bs = cmd_args.evalbs
+    eps = cmd_args.eps
     seed = 42069
     n_workers = 0
     output_dir = "saves\\"

@@ -3,6 +3,8 @@ import torch.nn as nn
 import numpy as np
 from modules.Wavelets.Haar.squeezeSplit import SqueezeSplit
 from models.WaveletFlow.flowUnit import FlowUnit
+from utilities.utils import uniform_binning_correction, split_feature
+from modules.layers import gaussian_likelihood
 import math
 
 
@@ -14,7 +16,6 @@ class WaveletFlow(nn.Module):
         self.partial_level = level
         self.device = params.device
         self.haar_squeeze_split = SqueezeSplit(compensate=True, device=params.device)
-
         if self.partial_level == -1 or self.partial_level == self.base_level:
             params.K = params.stepsPerResolution[self.base_level]
             # self.spatial_biasing = params.spatialBiasing  # i dont know what this does (yet)
@@ -31,10 +32,12 @@ class WaveletFlow(nn.Module):
             else:
                 H = 2 ** (level - 1)  # assume shape is always square
                 W = 2 ** (level - 1)
+                print(H, W)
                 self.sub_flows.append(
                     FlowUnit(params, [9, H, W], level, conditional=True))
 
         self.conditioning_network = conditioning_network
+
 
     def forward(self, x, partial_level=-1, reverse=False):
         latents = []
@@ -66,25 +69,25 @@ class WaveletFlow(nn.Module):
                 # compute flow
                 if level == partial_level or partial_level == -1:
                     if level == self.base_level:  # base level doesn't need to extract details
+                        base, logdet = uniform_binning_correction(base)
                         flow = self.base_flow
-                        latent, ld = flow.forward(base)
+                        latent, logdet = flow.forward(base, logdet)
                     else:
                         # decompose base
                         haar = self.haar_squeeze_split.forward(base)
                         details = haar.details
                         base = haar.base
-
+                        details, logdet = uniform_binning_correction(details)
                         # condition
-
                         conditioning = self.conditioning_network.encoder_list[level](base)
                         flow = self.sub_flows[level]
-                        latent, ld = flow.forward(details, conditioning=conditioning)
+                        latent, logdet = flow.forward(details, logdet, conditioning=conditioning)
 
                     latents.append(latent)
-                    haar_ldj = torch.full(ld.shape, flow.shape[0] * flow.shape[1] * flow.shape[2] * np.log(0.5) *
+                    haar_logdet = torch.full(logdet.shape, flow.shape[0] * flow.shape[1] * flow.shape[2] * np.log(0.5) *
                                           (self.n_levels - level), device=self.device)
-                    log_density += ld + haar_ldj  # need custom haar_ldj because of partial
-                    log_density = (-log_density) / (flow.shape[0] * flow.shape[1] * flow.shape[2] * math.log(2.0))
+                    log_density += logdet + haar_logdet  # need custom haar_ldj because of partial
+                    bpd = (-log_density) / (np.log(2.0) * flow.shape[0] * flow.shape[1] * flow.shape[2])
                     if partial_level != -1:
                         break  # stop of we are doing partial
                 else:
@@ -97,7 +100,7 @@ class WaveletFlow(nn.Module):
 
                     latents.append(None)
 
-            return latents, log_density, None
+            return latents, bpd, None
 
     def sample_latents(self, n_batch=1, temperature=1.0):
         latents = [None] * self.base_level

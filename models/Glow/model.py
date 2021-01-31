@@ -6,6 +6,7 @@ from utilities.utils import split_feature, uniform_binning_correction
 from modules.Coupling.basicCoupling import Additive, Affine
 from modules.Coupling.cycleMask import CycleMask
 from modules.Coupling.checkerboard import Checkerboard
+from modules.Coupling.thresMask import ThresMask
 from modules.layers import *
 
 
@@ -39,6 +40,8 @@ class FlowStep(nn.Module):
             self.coupling = Checkerboard(in_channels, in_channels * 2, hidden_channels, self.device)
         elif self.flow_coupling == "cycle":
             self.coupling = CycleMask(in_channels, in_channels * 2, hidden_channels, self.device)
+        elif self.flow_coupling == "thres":
+            self.coupling = ThresMask(in_channels, in_channels * 2, hidden_channels, self.device)
 
     def forward(self, input, logdet, conditioning=None, reverse=False):
         if not reverse:
@@ -100,7 +103,7 @@ class FlowNet(nn.Module):
                 self.output_shapes.append([-1, C // 2, H, W])
                 C = C // 2
 
-    def forward(self, input, logdet, reverse=False, temperature=None):
+    def forward(self, input, logdet=None, reverse=False, temperature=None):
         if reverse:
             return self.decode(input, temperature)
         else:

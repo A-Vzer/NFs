@@ -12,7 +12,7 @@ import cv2
 import numpy as np
 
 
-class CycleMask(nn.Module):
+class ThresMask(nn.Module):
     def __init__(self, in_channels, out_channels, hidden_channels, device, cycles=2):
         super().__init__()
         self.cycles = cycles
@@ -24,8 +24,8 @@ class CycleMask(nn.Module):
         std = torch.std(x, dim=1)
         thres1 = torch.unsqueeze(mean + std, dim=1)
         thres2 = torch.unsqueeze(mean - std, dim=1)
-        b1 = torch.unsqueeze(thres1, dim=1)
-        b2 = torch.unsqueeze(thres2, dim=1)
+        b1 = torch.unsqueeze(thres1, dim=1).cpu()
+        b2 = torch.unsqueeze(thres2, dim=1).cpu()
         mask1 = torch.tensor(np.where(x < b1, 0, x), device=x.device)
         mask2 = torch.tensor(np.where(b1 < x < b2, 0, x), device=x.device)
         mask3 = torch.tensor(np.where(x > b2, 0, x), device=x.device)
@@ -52,6 +52,8 @@ class CycleMask(nn.Module):
         h = self.block.cnn(z1)
         s, t = split_feature(h, "cross")
         s = self.rescale(torch.tanh(s))
+        plt.imshow(numpy.transpose(z1.detach().cpu(), (1,2,0)))
+        plt.show()
         return z1, z2, s, t
 
     def forwardStep(self, x, logdet, n, reverse=False):

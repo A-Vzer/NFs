@@ -1,7 +1,7 @@
 import torch
 import torch.optim as optim
-from parameters import Parameters
-from WaveletFlow.networkBody import Network
+from models.parameters import Parameters
+from models.WaveletFlow.networkBody import Network
 from utilities.utils import loss
 
 
@@ -21,7 +21,7 @@ class WaveletFlowParameters(Parameters):
         self.convWidth = [128, 128, 128, 128, 128, 256, 256]
         self.hiddenChannels = 256
         self.n_res_blocks = 3
-        self.lr = 1e-2
+        self.lr = 1e-3
         self.weight_decay = 1
         self.lr_lambda = lambda epoch: min(1.0, (epoch + 1) / self.warmup)  # noqa
         self.zero_use_logscale = True

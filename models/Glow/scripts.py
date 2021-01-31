@@ -43,6 +43,7 @@ class RunGlow:
         return loss
 
     def eval_step(self, test_loader, eval_loss):
+        self.flow.scheduler.step()
         for idx, (x, y) in enumerate(Bar(test_loader)):
             self.flow.model.eval()
             x = x.to(self.device)
